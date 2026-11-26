@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Packrat</title>
+  <meta name="description" content="A sticker on every Makita pack: tap it for the pack's cell balance and charge cycles over time from Cellmate's readings, and who has it when it's lent out.">
+  <meta property="og:title" content="Packrat">
+  <meta property="og:description" content="Every Makita pack's health, history and who has it.">
+  <meta property="og:image" content="https://packrat.junkdrawer.works/og.png">
+  <meta property="og:url" content="https://packrat.junkdrawer.works/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#F1EFE8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#161714" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preload" href="fonts/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/kit.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<noscript>Packrat needs JavaScript to show your packs.</noscript>
+<main class="wrap">
+  <header class="top"><a class="brand" href="#"><h1>Packrat</h1><p class="sub">How every pack is doing, and who has it.</p></a></header>
+  <p class="sync" id="sync"></p>
+  <div id="app" aria-live="polite"></div>
+  <footer class="jd-foot">
+    <a href="https://junkdrawer.works/">Part of junkdrawer.works</a><span aria-hidden="true">·</span><a href="https://junkdrawer.works/privacy.html">Privacy</a>
+  </footer>
+</main>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

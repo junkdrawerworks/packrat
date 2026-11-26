@@ -1,0 +1,14 @@
+/* Packrat: tool teal. */
+:root { --accent: #00848F; --accent-ink: #EAFBFC; --tape: #00848F; --tape-ink: #EAFBFC; --tape-edge: #005860; }
+@media (prefers-color-scheme: dark) { :root { --accent: #6FD3DB; --accent-ink: #062A2D; --tape: #0A6E77; --tape-edge: #023A3F; } }
+.crumb { margin: 0 0 8px; font-size: 15px; } .crumb a { color: var(--ink2); text-decoration: none; }
+.row .num { flex: none; width: 46px; height: 46px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 700 24px/1 var(--display); }
+.cells { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0 12px; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.cell i { display: flex; align-items: flex-end; width: 100%; height: 70px; border-radius: 6px; background: var(--soft); overflow: hidden; }
+.cell i b { display: block; width: 100%; background: var(--ok); }
+.cell.low i b { background: var(--bad); }
+.cell span { font: 500 13px/1 var(--mono); } .cell small { color: var(--ink3); font-size: 11px; }
+.cell.low span { color: var(--bad); font-weight: 600; }
+ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 4px 0; overflow-wrap: anywhere; }
+.small { font-size: 14px; }

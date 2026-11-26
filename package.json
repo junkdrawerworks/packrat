@@ -1,0 +1,9 @@
+{
+  "name": "packrat",
+  "private": true,
+  "type": "module",
+  "description": "Every Makita pack's health, history and who has it.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs && node test/e2e.mjs"
+  }
+}
