@@ -134,7 +134,7 @@ async function editLoan(l) {
     { name: 'note', label: 'Note', value: l.note } ] });
   if (!v) return;
   if (v.__danger) {
-    if (await confirmSheet('Delete this loan?', `${l.who}, ${dayText(l.out)} to ${dayText(l.back)}. It goes from the pack's history.`, 'Delete')) { ledger.del('loans', l.id); toast('Loan deleted.'); render(); }
+    if (await confirmSheet('Delete this loan?', `${l.who}, ${dayText(l.out)} to ${dayText(l.back)}. It goes from the pack's history.`, 'Delete', { danger: true })) { ledger.del('loans', l.id); toast('Loan deleted.'); render(); }
     return;
   }
   ledger.put('loans', made(v));
@@ -172,7 +172,7 @@ async function editPack(p) {
     { name: 'note', label: 'Note', value: p?.note } ] });
   if (!v) return;
   if (v.__danger) {
-    if (!await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete')) return;
+    if (!await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete', { danger: true })) return;
     // its loans go (a new pack with this number starts with none), and it stays as a retired record so the readings it
     // had aren't offered as "not linked" (a reading taken after now is)
     for (const l of loans().filter(l => l.pack === p.id)) ledger.del('loans', l.id);
