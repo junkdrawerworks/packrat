@@ -110,7 +110,7 @@ async function lend(p) {
   const people = [...new Set(loans().map(l => l.who))].sort();
   const dl = h('datalist', { id: 'people' }, people.map(n => h('option', { value: n })));
   const id = newId(6), made = v => ({ id, pack: p.id, who: v.who, note: v.note, out: today(), back: null });
-  const v = await sheet({ title: `Lend ${p.label || 'pack ' + p.id}`, ok: 'Lend', body: dl, check: v => refusedLine(made(v)), fields: [
+  const v = await sheet({ title: `Lend ${p.label || 'pack ' + p.id}`, ok: 'Lend', body: dl, autofocus: true, check: v => refusedLine(made(v)), fields: [
     { name: 'who', label: 'To', required: true, list: 'people' }, { name: 'note', label: 'Note', placeholder: 'With the impact driver' } ] });
   if (!v || v.__danger || !v.who) return;
   ledger.put('loans', made(v));
