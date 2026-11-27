@@ -39,7 +39,7 @@ function renderHome() {
   return [
     out.length ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, 'Lent out: '), out.map(p => `${p.label || p.id} (${openLoan(p, loans()).who})`).join(', '))) : null,
     h('ul', { class: 'list' }, packs().map(packRow)),
-    !packs().length ? h('p', { class: 'empty' }, 'No packs yet. Number each pack with a marker, then add it here.') : null,
+    !packs().length ? h('p', { class: 'empty' }, ledger.notReady('packs') || 'No packs yet. Number each pack with a marker, then add it here.') : null,
     loose.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
       h('p', { class: 'muted' }, 'Open a pack and press Link to attach its readings.'),
       h('ul', { class: 'plain' }, loose.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
@@ -130,9 +130,9 @@ function render() {
   }
   let body;
   if (r.view === 'item') {
-    const p = pack(r.id);
-    body = p ? renderPack(p) : [h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')), h('p', { class: 'empty' }, ledger.has('packs') ? `No pack ${r.id} yet.` : 'Loading…'),
-      ledger.has('packs') ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: () => editPack({ id: r.id }) }, `Add pack ${r.id}`)) : null];
+    const p = pack(r.id), wait = ledger.notReady('packs');
+    body = p ? renderPack(p) : [h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')), h('p', { class: 'empty' }, wait || `No pack ${r.id} yet.`),
+      !wait ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: () => editPack({ id: r.id }) }, `Add pack ${r.id}`)) : null];
   } else body = renderHome();
   mount(app, body);
   const st = $('#sync'); st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText();
@@ -141,6 +141,6 @@ function render() {
 window.addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
 ledger.on(() => { const st = $('#sync'); if (st) { st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText(); } });
 render();
-if (ledger.connected) ledger.sync(['packs', 'reads', 'loans']).then(render);
+ledger.keepUp(['packs', 'reads', 'loans'], render);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 window.__packrat = { ledger, render };
