@@ -42,6 +42,20 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.match(await page.locator('.facts').innerText(), /weak cell \(152 mV apart\)/);
   await page.click('text=‹ All packs');
   assert.equal(await page.locator('a.row[href="#03"] .chip').textContent(), 'weak');
+  // what Edit saves about a pack shows on its page: the note under the name, when it was bought, its capacity
+  await page.goto('about:blank');
+  await page.goto(base + '?demo#04');
+  await page.click('#app >> text=Edit');
+  await page.fill('#f-bought', '2021-05-02');
+  await page.fill('#f-note', 'Came with the drill kit. Keep it for the blower.');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('p.note >> text=Came with the drill kit. Keep it for the blower.');
+  assert.match(await page.locator('.facts').innerText(), /Bought\s+May 2, 2021 · \d\.\d yr/, 'the bought date is saved but shown nowhere');
+  // its capacity from Cellmate's reading, and an idle pack's cycles: not "about 0 a month"
+  await page.evaluate(() => { const { ledger } = window.__packrat; ledger.put('reads', { ...ledger.doc('reads', 'r1'), capAh: 5 }); ledger.put('reads', { ...ledger.doc('reads', 'r2'), cycles: 212 }); location.hash = '#01'; });
+  await page.waitForSelector('.tape >> text=5.0 Ah #1');
+  assert.match(await page.locator('.facts').innerText(), /Capacity\s+5\.0 Ah/);
+  assert.match(await page.locator('.facts').innerText(), /Charge cycles\s+212 \(none since Jun 2, 2026\)/, 'about 0 a month');
   await page.goto(base + '?demo#04');
   await page.click('text=Link to Cellmate');
   await page.click('dialog >> button[type=submit]');

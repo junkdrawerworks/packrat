@@ -13,3 +13,5 @@
 .cell em { font: 600 11px/1 var(--body); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--bad); }
 ul.plain { margin: 0; padding-left: 18px; } ul.plain li { margin: 4px 0; overflow-wrap: anywhere; }
 .small { font-size: 14px; }
+.note { margin: -4px 0 12px; }
+.pack-facts { margin: 0 0 14px; }

@@ -1,10 +1,10 @@
 // Packrat: a sticker on every Makita pack. Tap it for the pack's health over time (from Cellmate's readings),
 // its charge count, and who has it when it's lent out.
-import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText, today, buzz, held, sampleLink } from './kit/ui.js';
+import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, daysSince, stampText, today, buzz, held, sampleLink } from './kit/ui.js';
 import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -64,9 +64,15 @@ function renderPack(p) {
   const r = rs[0], c = lastCells(rs), hl = health(c), loan = openLoan(p, loans());
   const cpm = cyclesPerMonth(rs);
   const past = loans().filter(l => l.pack === p.id && l.back).sort((a, b) => String(b.back).localeCompare(String(a.back))).slice(0, 5);
+  // what the Edit sheet and Link save about the pack itself
+  const ah = p.ah || rs.find(x => x.capAh > 0)?.capAh;
+  const mine = [
+    p.bought ? [h('dt', {}, 'Bought'), h('dd', {}, dayText(p.bought) + (daysSince(p.bought) >= 1 ? ` · ${ageText(p.bought)}` : ''))] : null,
+    ah ? [h('dt', {}, 'Capacity'), h('dd', {}, `${Number(ah).toFixed(1)} Ah`)] : null].filter(Boolean);
   return [
     h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')),
     h('div', { class: 'tape-wrap' }, h('span', { class: 'tape-cap' }, `Pack ${p.id}${p.model ? ' · ' + p.model : ''}`), h('div', { class: 'tape' }, p.label || p.model || 'Pack ' + p.id)),
+    p.note ? h('p', { class: 'note' }, p.note) : null,
     loan ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, `Out with ${loan.who}`), ` since ${dayText(loan.out)}.`, loan.note ? ' ' + loan.note : '')) : null,
     h('div', { class: 'btns stack' }, loan
       ? h('button', { type: 'button', class: 'btn big', onclick: () => { ledger.put('loans', { ...loan, back: today() }); buzz(50); toast('Back home.'); render(); } }, 'It came back')
@@ -78,12 +84,13 @@ function renderPack(p) {
       h('dl', { class: 'facts' },
         h('dt', {}, 'Cells'), h('dd', {}, hl.text),
         lowest(c?.cells) ? [h('dt', {}, 'Lowest'), h('dd', {}, `${lowest(c.cells)}, ${(Math.min(...c.cells) / 1000).toFixed(2)} V`)] : null,
-        h('dt', {}, 'Charge cycles'), h('dd', {}, String(r.cycles) + (cpm != null ? ` (about ${cpm} a month)` : '')),
+        h('dt', {}, 'Charge cycles'), h('dd', {}, String(r.cycles) + (cpm ? ` (about ${cpm} a month)` : cpm === 0 ? ` (none since ${dayText(today(new Date(idleSince(rs))))})` : '')),
         c?.packmV ? [h('dt', {}, 'Pack'), h('dd', {}, (c.packmV / 1000).toFixed(2) + ' V')] : null,
         c?.tempC != null ? [h('dt', {}, 'Temperature'), h('dd', {}, c.tempC + ' °C')] : null,
         h('dt', {}, 'Locked'), h('dd', {}, r.locked ? 'Yes: Cellmate\'s guide covers clearing it' : 'No'),
-        r.mfg ? [h('dt', {}, 'Made'), h('dd', {}, r.mfg)] : null))
-      : h('div', { class: 'notice' }, h('p', {}, p.rom ? 'No readings yet. Put it on Cellmate while it\'s on your Wi-Fi.' : 'Not linked to Cellmate yet. Read it on Cellmate, then press Link below.')),
+        r.mfg ? [h('dt', {}, 'Made'), h('dd', {}, r.mfg)] : null, mine))
+      : [h('div', { class: 'notice' }, h('p', {}, p.rom ? 'No readings yet. Put it on Cellmate while it\'s on your Wi-Fi.' : 'Not linked to Cellmate yet. Read it on Cellmate, then press Link below.')),
+         mine.length ? h('dl', { class: 'facts pack-facts' }, mine) : null],
     rs.length > 1 ? h('section', {}, h('h2', {}, 'History'), h('div', { class: 'tbl' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Cycles'), h('th', {}, 'Spread'))),
       h('tbody', {}, rs.slice(0, 12).map(x => h('tr', {}, h('td', {}, dayText(today(new Date(when(x))))), h('td', { class: 'm' }, x.cycles), h('td', { class: 'm' }, x.spreadmV != null ? x.spreadmV + ' mV' : '—'))))))) : null,
     past.length ? h('section', {}, h('h2', {}, 'Lent before'), h('ul', { class: 'plain' }, past.map(l => h('li', {}, `${l.who}: ${dayText(l.out)} to ${dayText(l.back)}`)))) : null,

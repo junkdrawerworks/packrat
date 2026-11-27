@@ -58,6 +58,13 @@ export function unpaired(packs, reads) {
 // The open loan for a pack, if it's out.
 export const openLoan = (pack, loans) => loans.filter(l => l.pack === pack.id && !l.back).sort((a, b) => String(b.out).localeCompare(String(a.out)))[0] || null;
 
+// Since when the cycle count has stood where it is now: the oldest of the newest readings with that count.
+export function idleSince(rs) {
+  let i = 0;
+  while (i + 1 < rs.length && rs[i + 1].cycles === rs[0].cycles) i++;
+  return rs.length ? when(rs[i]) : null;
+}
+
 // Charge cycles per month between the oldest and newest reading (null with under a month of history).
 export function cyclesPerMonth(rs) {
   if (rs.length < 2) return null;

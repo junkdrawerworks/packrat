@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth } from '../js/packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince } from '../js/packs.js';
 import { SAMPLE } from '../js/sample.js';
 const packs = SAMPLE['packrat.packs'], reads = SAMPLE['packrat.reads'], loans = SAMPLE['packrat.loans'];
 test('cell spread says how the pack is', () => {
@@ -53,4 +53,13 @@ test('the lowest cell by number, when one is marked low', () => {
   assert.equal(lowest([2364, 2370, 2364, 2378, 2371]), 'cells 1 and 3');
   assert.equal(lowest([3912, 3915, 3909, 3911, 3914]), '', 'balanced: no lowest named');
   assert.equal(lowest(undefined), '');
+});
+test('since when the cycles have stood still', () => {
+  const t = s => Date.parse(s);
+  const rs = [{ cycles: 212, at: t('2026-11-20') }, { cycles: 212, at: t('2026-08-01') }, { cycles: 212, at: t('2026-06-02') }, { cycles: 180, at: t('2026-01-02') }];
+  assert.equal(cyclesPerMonth(rs), 3);
+  assert.equal(idleSince(rs), t('2026-06-02'));
+  assert.equal(cyclesPerMonth(rs.slice(0, 3)), 0, 'none in five months');
+  assert.equal(idleSince(rs.slice(0, 1)), t('2026-11-20'));
+  assert.equal(idleSince([]), null);
 });
