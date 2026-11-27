@@ -1,6 +1,6 @@
 // Packrat's own checks, run by test/e2e.mjs on a phone-sized page.
 const fakeNfc = () => { window.__nfc = { writes: [] }; window.NDEFReader = class { async write(m) { window.__nfc.writes.push(m.records[0].data); } async scan() {} }; };
-export async function appChecks({ page, base, assert }) {
+export async function appChecks({ page, ctx, base, assert }) {
   assert.match(await page.locator('#app').innerText(), /connect first/i);
   await page.addInitScript(fakeNfc);
   await page.goto(base + '?demo');
@@ -25,4 +25,51 @@ export async function appChecks({ page, base, assert }) {
   await page.waitForFunction(() => window.__nfc.writes[0] === 'https://tag.junkdrawer.works/m/04');
   await page.waitForFunction(() => /^Written [A-Z][a-z]{2} \d{1,2}, \d{4}\.$/.test(document.querySelector('.nfc .state')?.textContent || ''));
   assert.equal(await page.locator('.nfc > .msg:last-child').textContent(), 'Written. Tap it with the phone to check it opens this page.');
+  await secondDevice({ ctx, base, assert });
+}
+
+// The laptop, connected while Google takes 3 s to answer its first list (a cold start), with the phone's pack 01 linked
+// to Cellmate on the sheet: Add a pack waits for the list, then offers 02, and pack 01 keeps its link.
+async function secondDevice({ ctx, base, assert }) {
+  const { DemoLedger } = await import(new URL('../js/kit/ledger.js', import.meta.url));
+  const p01 = { id: '01', label: '5.0 Ah #1', model: 'BL1860B', rom: '28BBBB0C1B0000A1', ah: 5 };
+  const google = new DemoLedger({ 'packrat.packs': [p01] });
+  const laptop = await ctx.browser().newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
+  const errors = [];
+  laptop.on('page', p => p.on('pageerror', e => errors.push(e.message)));
+  try {
+    await laptop.route('https://script.google.com/**', async route => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (body.op === 'list') await new Promise(r => setTimeout(r, 3000));
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(google.handle(body)) });
+    });
+    await laptop.addInitScript(() => { try { localStorage.getItem('packrat.ledger') || localStorage.setItem('packrat.ledger',
+      JSON.stringify({ url: 'https://script.google.com/macros/s/AKfyTEST/exec', key: 'k'.repeat(40) })); } catch {} });
+    const p = await laptop.newPage();
+    await p.goto(base);
+    await p.waitForSelector('.empty >> text=Loading…');
+    const add = p.locator('button', { hasText: 'Add a pack' });
+    assert.equal(await add.isDisabled(), true, 'Add a pack offered before the ledger answered');
+    await p.waitForSelector('.row >> text=5.0 Ah #1', { timeout: 10000 });
+    assert.equal(await add.isDisabled(), false);
+    await add.click();
+    assert.equal(await p.inputValue('#f-id'), '02', 'Add a pack offered a number the sheet already has');
+    await p.fill('#f-label', '2.0 Ah compact');
+    await p.fill('#f-model', 'BL1820B');
+    await p.click('dialog >> button[type=submit]');
+    await p.waitForSelector('.tape >> text=2.0 Ah compact');
+    await p.waitForFunction(() => !/Saving/.test(document.querySelector('#sync').textContent));
+    const { _updated, ...was } = google.store['packrat.packs']['01'];
+    assert.deepEqual(was, p01, "the phone's pack 01 lost its Cellmate link");
+    assert.equal(google.store['packrat.packs']['02'].model, 'BL1820B');
+    // a sheet opened, then the copy forgotten before Save: it isn't saved from nothing
+    await p.goto(base);
+    await add.click();
+    await p.waitForSelector('dialog[open]');
+    await p.evaluate(() => { const m = window.__packrat.ledger.m('packs'); m.since = 0; m.listed = false; });
+    await p.click('dialog >> button[type=submit]');
+    await p.waitForSelector('.toast.show >> text=Still loading from the ledger. Try again in a moment.');
+    assert.equal(google.store['packrat.packs']['03'], undefined, 'saved over the sheet before the ledger answered');
+    assert.deepEqual(errors, [], 'errors on the laptop');
+  } finally { await laptop.close(); }
 }

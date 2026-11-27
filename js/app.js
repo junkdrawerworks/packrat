@@ -1,7 +1,7 @@
 // Packrat: a sticker on every Makita pack. Tap it for the pack's health over time (from Cellmate's readings),
 // its charge count, and who has it when it's lent out.
-import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText, today, buzz } from './kit/ui.js';
-import { Ledger, watchConnectLinks } from './kit/ledger.js';
+import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText, today, buzz, held } from './kit/ui.js';
+import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
 import { health, readsFor, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
@@ -16,6 +16,10 @@ const reads = () => ledger.docs('reads');
 const loans = () => ledger.docs('loans');
 const pack = id => ledger.doc('packs', id);
 const nextNumber = () => String(Math.max(0, ...packs().map(p => parseInt(p.id, 10) || 0)) + 1).padStart(2, '0');
+// A new pack waits until this phone has heard from the ledger (before that its copy can't say which numbers are taken,
+// and a save would replace the pack another device has under that number, Cellmate link and all), and asks for the
+// latest first.
+const fresh = then => e => held(e.currentTarget, ledger.catchUp(['packs'])).then(then);
 
 function cells(r) {
   if (!r?.cells?.length) return null;
@@ -35,15 +39,15 @@ function packRow(p) {
 
 function renderHome() {
   const out = packs().filter(p => openLoan(p, loans()));
-  const loose = unpaired(packs(), reads());
+  const loose = unpaired(packs(), reads()), wait = ledger.notReady('packs');
   return [
     out.length ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, 'Lent out: '), out.map(p => `${p.label || p.id} (${openLoan(p, loans()).who})`).join(', '))) : null,
     h('ul', { class: 'list' }, packs().map(packRow)),
-    !packs().length ? h('p', { class: 'empty' }, ledger.notReady('packs') || 'No packs yet. Number each pack with a marker, then add it here.') : null,
+    !packs().length || wait ? h('p', { class: 'empty' }, wait || 'No packs yet. Number each pack with a marker, then add it here.') : null,
     loose.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
       h('p', { class: 'muted' }, 'Open a pack and press Link to attach its readings.'),
       h('ul', { class: 'plain' }, loose.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
-    h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: () => editPack(null) }, 'Add a pack')),
+    h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', disabled: !!wait, onclick: fresh(() => editPack(null)) }, 'Add a pack')),
   ];
 }
 
@@ -115,6 +119,7 @@ async function editPack(p) {
   if (!v) return;
   if (v.__danger) { if (await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete')) { ledger.del('packs', p.id); go('#'); } return; }
   const id = (v.id || nextNumber()).replace(/[^0-9a-z-]/gi, '').toLowerCase() || nextNumber();
+  if (!pack(id) && !ledger.synced('packs')) { toast(STILL_LOADING, 'bad'); return; }
   if ((!exists || p.id !== id) && pack(id)) { toast(`There's already a pack ${id}.`, 'bad'); return; }
   if (exists && p.id !== id) ledger.del('packs', p.id);
   ledger.put('packs', { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note });
@@ -133,7 +138,7 @@ function render() {
   if (r.view === 'item') {
     const p = pack(r.id), wait = ledger.notReady('packs');
     body = p ? renderPack(p) : [h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')), h('p', { class: 'empty' }, wait || `No pack ${r.id} yet.`),
-      !wait ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: () => editPack({ id: r.id }) }, `Add pack ${r.id}`)) : null];
+      !wait ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: fresh(() => editPack({ id: r.id })) }, `Add pack ${r.id}`)) : null];
   } else body = renderHome();
   mount(app, body);
   const st = $('#sync'); st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText();
