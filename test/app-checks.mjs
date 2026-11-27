@@ -129,6 +129,8 @@ export async function appChecks({ page, ctx, base, assert }) {
   await loanChecks({ page, base, assert });
   // Back from a pack 40 rows down lands where the list was
   const { backKeepsPlace } = await import('./kit-checks.mjs');
+  // every link, button and card header on the sample's screens is a 44 px target
+  await (await import('./kit-checks.mjs')).targetsAudit({ browser: ctx.browser(), base, assert, hashes: ['', '#01', '#02', '#03', '#09'] });
   await backKeepsPlace({ browser: ctx.browser(), base, assert, app: 'packrat', colls: { reads: [], loans: [],
     packs: Array.from({ length: 50 }, (_, i) => ({ id: String(i + 1).padStart(2, '0'), label: `5.0 Ah #${i + 1}`, model: 'BL1850B' })) } });
 }
