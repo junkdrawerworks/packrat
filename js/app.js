@@ -1,6 +1,6 @@
 // Packrat: a sticker on every Makita pack. Tap it for the pack's health over time (from Cellmate's readings),
 // its charge count, and who has it when it's lent out.
-import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText, today, buzz, held } from './kit/ui.js';
+import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText, today, buzz, held, sampleLink } from './kit/ui.js';
 import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
@@ -82,7 +82,7 @@ function renderPack(p) {
       h('button', { type: 'button', class: 'btn ghost', onclick: () => editPack(p) }, 'Edit')),
     p.rom ? h('p', { class: 'muted small' }, 'ROM ', h('code', {}, p.rom)) : null,
     nfcPanel(tagUrl('m', p.id), { note: 'On the flat side of the pack, away from the contacts and the release button.',
-      tagged: p.tagged, onWritten: () => { ledger.put('packs', { ...(pack(p.id) || p), tagged: today() }); render(); } }),
+      sample: !!ledger.demo, tagged: p.tagged, onWritten: () => { ledger.put('packs', { ...(pack(p.id) || p), tagged: today() }); render(); } }),
   ];
 }
 
@@ -142,6 +142,7 @@ function render() {
   } else body = renderHome();
   mount(app, body);
   const st = $('#sync'); st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText();
+  if (ledger.demo && !$('.sample-out')) st.after(sampleLink());
   document.title = r.view === 'item' && pack(r.id) ? `Pack ${r.id} · Packrat` : 'Packrat';
 }
 window.addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
