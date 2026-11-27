@@ -57,6 +57,13 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.waitForSelector('.nfc .state >> text=Written Nov 20, 2026.');
   await page.click('#app >> text=Edit');
   assert.equal(await page.locator('label[for=f-id] small').textContent(), 'The number on its sticker. Changing it needs a new sticker.');
+  // a number another pack has: the sheet stays open with what was typed, and says so
+  await page.fill('#f-note', 'Runs warm on the circular saw');
+  await page.fill('#f-id', '03');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector("dialog[open] .sheet-msg >> text=There's already a pack 03.");
+  assert.equal(await page.inputValue('#f-note'), 'Runs warm on the circular saw', 'the refused Save lost what was typed');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'f-id');
   await page.fill('#f-id', '08');
   await page.click('dialog >> button[type=submit]');
   await page.waitForSelector('.tape-cap >> text=Pack 08');
@@ -133,10 +140,14 @@ async function loanChecks({ page, base, assert }) {
   await page.click('dialog >> button[type=submit]');
   await page.waitForSelector('.notice.warn >> text=Out with Cousin');
   await page.click('button.loan >> text=Neighbor');
+  await page.fill('dialog[open] #f-note', 'Borrowed the 5.0 too');
   await page.fill('dialog[open] #f-back', '');
   await page.click('dialog >> button[type=submit]');
-  await page.waitForSelector('.toast.show >> text=Pack 01 is already out with Cousin.');
+  await page.waitForSelector('dialog[open] .sheet-msg >> text=Pack 01 is already out with Cousin.');
+  assert.equal(await page.inputValue('dialog[open] #f-note'), 'Borrowed the 5.0 too', 'the refused Save lost what was typed');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'f-back');
   assert.equal((await l2()).back, '2026-09-09', 'an old loan was put back out while the pack is out on another');
+  await page.click('dialog[open] >> text=Cancel');
   await page.click('text=It came back');
   await page.waitForSelector('text=Lend it out');
   await page.click('button.loan >> text=Neighbor');
@@ -224,8 +235,10 @@ async function secondDevice({ ctx, base, assert }) {
     await add.click();
     await p.waitForSelector('dialog[open]');
     await p.evaluate(() => { const m = window.__packrat.ledger.m('packs'); m.since = 0; m.listed = false; });
+    await p.fill('#f-note', 'Runs warm on the circular saw');
     await p.click('dialog >> button[type=submit]');
-    await p.waitForSelector('.toast.show >> text=Still loading from the ledger. Try again in a moment.');
+    await p.waitForSelector('dialog[open] .sheet-msg >> text=Still loading from the ledger. Try again in a moment.');
+    assert.equal(await p.inputValue('dialog[open] #f-note'), 'Runs warm on the circular saw', 'the refused Save lost what was typed');
     assert.equal(google.store['packrat.packs']['03'], undefined, 'saved over the sheet before the ledger answered');
     assert.deepEqual(errors, [], 'errors on the laptop');
   } finally { await laptop.close(); }

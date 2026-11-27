@@ -1,7 +1,7 @@
 // Packrat: a sticker on every Makita pack. Tap it for the pack's health over time (from Cellmate's readings),
 // its charge count, and who has it when it's lent out.
 import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, daysSince, stampText, today, buzz, held, sampleLink } from './kit/ui.js';
-import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
+import { Ledger, watchConnectLinks, refusedLine, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
 import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
@@ -109,16 +109,25 @@ function renderPack(p) {
 async function lend(p) {
   const people = [...new Set(loans().map(l => l.who))].sort();
   const dl = h('datalist', { id: 'people' }, people.map(n => h('option', { value: n })));
-  const v = await sheet({ title: `Lend ${p.label || 'pack ' + p.id}`, ok: 'Lend', body: dl, fields: [
+  const id = newId(6), made = v => ({ id, pack: p.id, who: v.who, note: v.note, out: today(), back: null });
+  const v = await sheet({ title: `Lend ${p.label || 'pack ' + p.id}`, ok: 'Lend', body: dl, check: v => refusedLine(made(v)), fields: [
     { name: 'who', label: 'To', required: true, list: 'people' }, { name: 'note', label: 'Note', placeholder: 'With the impact driver' } ] });
   if (!v || v.__danger || !v.who) return;
-  ledger.put('loans', { id: newId(6), pack: p.id, who: v.who, note: v.note, out: today(), back: null });
+  ledger.put('loans', made(v));
   buzz(50); toast(`Lent to ${v.who}.`); render();
 }
 
 // A loan from the history, to put right: who, the dates, or gone altogether (lent by mistake).
 async function editLoan(l) {
-  const v = await sheet({ title: `Lent to ${l.who}`, danger: 'Delete', fields: [
+  // Came back cleared: it's out again (a pack marked back by mistake), unless the pack is out on another loan now
+  const made = v => ({ ...(ledger.doc('loans', l.id) || l), who: v.who || l.who, out: v.out || l.out, back: v.back || null, note: v.note });
+  const check = v => {
+    const doc = made(v), other = !doc.back && loans().find(x => x.pack === l.pack && !x.back && x.id !== l.id);
+    if (other) return { field: 'back', line: `Pack ${l.pack} is already out with ${other.who}.` };
+    if (doc.back && doc.back < doc.out) return { field: 'back', line: 'It can\'t come back before it went out.' };
+    return refusedLine(doc);
+  };
+  const v = await sheet({ title: `Lent to ${l.who}`, danger: 'Delete', check, fields: [
     { name: 'who', label: 'To', value: l.who, required: true },
     { name: 'out', label: 'Went out', type: 'date', value: l.out, required: true },
     { name: 'back', label: 'Came back', type: 'date', value: l.back },
@@ -128,11 +137,7 @@ async function editLoan(l) {
     if (await confirmSheet('Delete this loan?', `${l.who}, ${dayText(l.out)} to ${dayText(l.back)}. It goes from the pack's history.`, 'Delete')) { ledger.del('loans', l.id); toast('Loan deleted.'); render(); }
     return;
   }
-  // Came back cleared: it's out again (a pack marked back by mistake), unless the pack is out on another loan now
-  const out = v.out || l.out, back = v.back || null, other = !back && loans().find(x => x.pack === l.pack && !x.back && x.id !== l.id);
-  if (other) { toast(`Pack ${l.pack} is already out with ${other.who}.`, 'bad'); return; }
-  if (back && back < out) { toast('It can\'t come back before it went out.', 'bad'); return; }
-  ledger.put('loans', { ...(ledger.doc('loans', l.id) || l), who: v.who || l.who, out, back, note: v.note });
+  ledger.put('loans', made(v));
   toast('Saved.'); render();
 }
 
@@ -151,7 +156,15 @@ async function link(p) {
 async function editPack(p) {
   // A stub from a sticker's page ({ id } only, no _updated) is a new pack even if that pack has come in since.
   const exists = !!(p?._updated && pack(p.id));
-  const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, fields: [
+  const number = v => (v.id || nextNumber()).replace(/[^0-9a-z-]/gi, '').toLowerCase() || nextNumber();
+  // a Save that can't go keeps the sheet open with everything typed: a number another pack has, or not heard from the ledger yet
+  const check = v => {
+    const id = number(v);
+    if (!pack(id) && !ledger.synced('packs')) return STILL_LOADING;
+    if ((!exists || p.id !== id) && pack(id)) return { field: 'id', line: `There's already a pack ${id}.` };
+    return refusedLine({ ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note });
+  };
+  const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, check, fields: [
     { name: 'id', label: 'Number', value: p?.id || nextNumber(), inputmode: 'numeric', hint: exists ? 'The number on its sticker. Changing it needs a new sticker.' : 'Write it on the pack with a paint pen too.' },
     { name: 'label', label: 'Name', value: p?.label, placeholder: '5.0 Ah #1' },
     { name: 'model', label: 'Model', value: p?.model, placeholder: 'BL1850B' },
@@ -166,9 +179,7 @@ async function editPack(p) {
     ledger.put('packs', { id: p.id, retired: true, gone: [...new Set([...(p.gone || []), p.rom].filter(Boolean))], goneAt: Date.now() });
     go('#'); return;
   }
-  const id = (v.id || nextNumber()).replace(/[^0-9a-z-]/gi, '').toLowerCase() || nextNumber();
-  if (!pack(id) && !ledger.synced('packs')) { toast(STILL_LOADING, 'bad'); return; }
-  if ((!exists || p.id !== id) && pack(id)) { toast(`There's already a pack ${id}.`, 'bad'); return; }
+  const id = number(v);
   // a pack once deleted under this number keeps its readings out of "not linked" under the new one too
   const was = ledger.doc('packs', id), gone = [...new Set([...(p?.gone || []), ...(was?.retired ? was.gone || [] : [])])];
   const goneAt = Math.max(Number(p?.goneAt) || 0, was?.retired ? Number(was.goneAt) || 0 : 0) || null;
