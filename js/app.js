@@ -77,7 +77,8 @@ function renderPack(p) {
       h('button', { type: 'button', class: 'btn ghost', onclick: () => link(p) }, p.rom ? 'Relink to Cellmate' : 'Link to Cellmate'),
       h('button', { type: 'button', class: 'btn ghost', onclick: () => editPack(p) }, 'Edit')),
     p.rom ? h('p', { class: 'muted small' }, 'ROM ', h('code', {}, p.rom)) : null,
-    nfcPanel(tagUrl('m', p.id), { note: 'On the flat side of the pack, away from the contacts and the release button.' }),
+    nfcPanel(tagUrl('m', p.id), { note: 'On the flat side of the pack, away from the contacts and the release button.',
+      tagged: p.tagged, onWritten: () => { ledger.put('packs', { ...(pack(p.id) || p), tagged: today() }); render(); } }),
   ];
 }
 

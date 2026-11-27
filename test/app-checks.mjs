@@ -23,4 +23,6 @@ export async function appChecks({ page, base, assert }) {
   await page.waitForSelector('code >> text=2833D0110C000044');
   await page.click('text=Write sticker');
   await page.waitForFunction(() => window.__nfc.writes[0] === 'https://tag.junkdrawer.works/m/04');
+  await page.waitForFunction(() => /^Written [A-Z][a-z]{2} \d{1,2}, \d{4}\.$/.test(document.querySelector('.nfc .state')?.textContent || ''));
+  assert.equal(await page.locator('.nfc > .msg:last-child').textContent(), 'Written. Tap it with the phone to check it opens this page.');
 }
