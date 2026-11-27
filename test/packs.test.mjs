@@ -69,3 +69,14 @@ test("a deleted pack's readings aren't offered for linking again, under a new pa
   assert.deepEqual(unpaired([{ id: '01', label: 'New', gone: ['28F1A20C1A0000E3'] }, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044']);
   assert.deepEqual(unpaired([{ id: '01', retired: true, rom: '28F1A20C1A0000E3' }, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044', '28F1A20C1A0000E3'], 'a retired record links nothing by its rom');
 });
+test("a deleted pack's battery read again after the delete can be linked again", () => {
+  const goneAt = Date.parse('2026-11-25T12:00:00Z'), again = { id: 'r20', rom: '28F1A20C1A0000E3', model: 'BL1850B', cycles: 213, at: Date.parse('2026-11-26T09:00:00Z') };
+  const retired = { id: '01', retired: true, gone: ['28F1A20C1A0000E3'], goneAt };
+  assert.deepEqual(unpaired([retired, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044'], 'the readings from before the delete are offered');
+  assert.deepEqual(unpaired([retired, ...packs.slice(1)], [...reads, again]).map(r => r.id), ['r20', 'r5'], 'a reading taken after the delete is never offered');
+  assert.deepEqual(unpaired([{ id: '01', label: 'New', gone: ['28F1A20C1A0000E3'], goneAt }, ...packs.slice(1)], [...reads, again]).map(r => r.id), ['r20', 'r5'],
+    'nor under a new pack 01 that kept the delete');
+  assert.deepEqual(unpaired([{ ...retired, goneAt: again.at }, ...packs.slice(1)], [...reads, again]).map(r => r.rom), ['2833D0110C000044'], 'a reading at the moment of the delete is the old one');
+  assert.deepEqual(unpaired([{ id: '01', retired: true, gone: ['28F1A20C1A0000E3'] }, ...packs.slice(1)], [...reads, again]).map(r => r.rom), ['2833D0110C000044'],
+    'a delete with no time keeps them all out, as before');
+});

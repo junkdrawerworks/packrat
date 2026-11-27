@@ -158,10 +158,10 @@ async function editPack(p) {
   if (!v) return;
   if (v.__danger) {
     if (!await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete')) return;
-    // its loans go (a new pack with this number starts with none), and it stays as a retired record so its readings
-    // aren't offered as "not linked"
+    // its loans go (a new pack with this number starts with none), and it stays as a retired record so the readings it
+    // had aren't offered as "not linked" (a reading taken after now is)
     for (const l of loans().filter(l => l.pack === p.id)) ledger.del('loans', l.id);
-    ledger.put('packs', { id: p.id, retired: true, gone: [...new Set([...(p.gone || []), p.rom].filter(Boolean))] });
+    ledger.put('packs', { id: p.id, retired: true, gone: [...new Set([...(p.gone || []), p.rom].filter(Boolean))], goneAt: Date.now() });
     go('#'); return;
   }
   const id = (v.id || nextNumber()).replace(/[^0-9a-z-]/gi, '').toLowerCase() || nextNumber();
@@ -169,12 +169,13 @@ async function editPack(p) {
   if ((!exists || p.id !== id) && pack(id)) { toast(`There's already a pack ${id}.`, 'bad'); return; }
   // a pack once deleted under this number keeps its readings out of "not linked" under the new one too
   const was = ledger.doc('packs', id), gone = [...new Set([...(p?.gone || []), ...(was?.retired ? was.gone || [] : [])])];
+  const goneAt = Math.max(Number(p?.goneAt) || 0, was?.retired ? Number(was.goneAt) || 0 : 0) || null;
   if (exists && p.id !== id) {                       // renumbered: its loans go with it
     ledger.del('packs', p.id);
     for (const l of loans().filter(l => l.pack === p.id)) ledger.put('loans', { ...l, pack: id });
   }
   const { retired, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
-  ledger.put('packs', gone.length ? { ...doc, gone } : doc);
+  ledger.put('packs', gone.length ? { ...doc, gone, goneAt } : doc);
   go('#' + id); render();
 }
 

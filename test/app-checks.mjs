@@ -79,6 +79,17 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.click('text=‹ All packs');
   await page.waitForSelector('a.row[href="#01"]');
   assert.deepEqual(await notLinked(), ['2833D0110C000044']);
+  // it was the same battery after all: read on Cellmate after the delete, it can be linked to the new pack 01
+  await addRead({ id: 'r20', cycles: 215, cells: [3901, 3903, 3899, 3902, 3900], spreadmV: 4, at: Date.now() + 1000 });
+  await page.waitForFunction(() => document.querySelectorAll('.card li code').length === 2, null, { timeout: 3000 }).catch(() => {});
+  assert.deepEqual(await notLinked(), ['28F1A20C1A0000E3', '2833D0110C000044'], "a deleted pack's battery read again can't be linked");
+  await page.click('a.row[href="#01"]');
+  await page.click('#app >> text=Link to Cellmate');
+  const offered = await page.locator('dialog[open] #f-rom option').evaluateAll(os => os.map(o => o.value));
+  assert.deepEqual(offered, ['28F1A20C1A0000E3', '2833D0110C000044']);
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.cells');
+  assert.equal(await page.evaluate(() => window.__packrat.ledger.doc('packs', '01').rom), '28F1A20C1A0000E3');
   // what Edit saves about a pack shows on its page: the note under the name, when it was bought, its capacity
   await page.goto('about:blank');
   await page.goto(base + '?demo#04');
