@@ -1,6 +1,6 @@
 // Packrat: a sticker on every Makita pack. Tap it for the pack's health over time (from Cellmate's readings),
 // its charge count, and who has it when it's lent out.
-import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, daysSince, stampText, today, buzz, held, sampleLink } from './kit/ui.js';
+import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, daysSince, stampText, today, buzz, held, sampleLink, onRoute } from './kit/ui.js';
 import { Ledger, watchConnectLinks, refusedLine, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
@@ -213,7 +213,7 @@ function render() {
   if (ledger.demo && !$('.sample-out')) st.after(sampleLink());
   document.title = r.view === 'item' && pack(r.id) ? `Pack ${r.id} · Packrat` : 'Packrat';
 }
-window.addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
+onRoute(render);
 ledger.on(() => { const st = $('#sync'); if (st) { st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText(); } });
 render();
 ledger.keepUp(['packs', 'reads', 'loans'], render);

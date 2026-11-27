@@ -127,6 +127,10 @@ export async function appChecks({ page, ctx, base, assert }) {
   await secondDevice({ ctx, base, assert });
   await stickerPage({ ctx, base, assert });
   await loanChecks({ page, base, assert });
+  // Back from a pack 40 rows down lands where the list was
+  const { backKeepsPlace } = await import('./kit-checks.mjs');
+  await backKeepsPlace({ browser: ctx.browser(), base, assert, app: 'packrat', colls: { reads: [], loans: [],
+    packs: Array.from({ length: 50 }, (_, i) => ({ id: String(i + 1).padStart(2, '0'), label: `5.0 Ah #${i + 1}`, model: 'BL1850B' })) } });
 }
 
 // A loan marked back by mistake: clearing Came back in its sheet puts the pack out again, unless it's out on another
