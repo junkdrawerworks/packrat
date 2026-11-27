@@ -65,6 +65,45 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.waitForFunction(() => /^Written [A-Z][a-z]{2} \d{1,2}, \d{4}\.$/.test(document.querySelector('.nfc .state')?.textContent || ''));
   assert.equal(await page.locator('.nfc > .msg:last-child').textContent(), 'Written. Tap it with the phone to check it opens this page.');
   await secondDevice({ ctx, base, assert });
+  await stickerPage({ ctx, base, assert });
+}
+
+// A phone that synced earlier, so Add pack N shows at once from its copy, opens pack 03's sticker while the ledger
+// takes a second to answer; meanwhile another device has added pack 03 and linked it to Cellmate. Add pack 03 then
+// opens that pack's page, and the sheet's pack 03 keeps its link.
+async function stickerPage({ ctx, base, assert }) {
+  const { DemoLedger } = await import(new URL('../js/kit/ledger.js', import.meta.url));
+  const p01 = { id: '01', label: '5.0 Ah #1', model: 'BL1850B' };
+  const p03 = { id: '03', label: '5.0 Ah #3', model: 'BL1850B', rom: '28CCCC0C1B0000A3', ah: 5 };
+  const google = new DemoLedger({ 'packrat.packs': [p01, p03] });
+  const phone = await ctx.browser().newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: 'block' });
+  const errors = [];
+  phone.on('page', p => p.on('pageerror', e => errors.push(e.message)));
+  try {
+    await phone.route('https://script.google.com/**', async route => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (body.op === 'list') await new Promise(r => setTimeout(r, 1000));
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(google.handle(body)) });
+    });
+    await phone.addInitScript(p01 => { try { if (!localStorage.getItem('packrat.ledger')) {
+      localStorage.setItem('packrat.ledger', JSON.stringify({ url: 'https://script.google.com/macros/s/AKfyTEST/exec', key: 'k'.repeat(40) }));
+      localStorage.setItem('packrat.m.packs', JSON.stringify({ docs: { '01': { ...p01, _updated: 1001 } }, since: 0, listed: true })); } } catch {} }, p01);
+    const p = await phone.newPage();
+    await p.goto(base + '#03');
+    await p.waitForSelector('text=No pack 03 yet.');
+    await p.click('text=Add pack 03');
+    await p.waitForSelector('dialog[open], .tape >> text=5.0 Ah #3');
+    if (await p.locator('dialog[open]').count()) {           // the sheet came up over the pack that arrived
+      await p.fill('#f-label', 'Typed on the phone');
+      await p.click('dialog >> button[type=submit]');
+    }
+    await p.waitForSelector('.tape >> text=5.0 Ah #3', { timeout: 5000 }).catch(() => {});
+    await p.waitForFunction(() => !/Saving/.test(document.querySelector('#sync').textContent));
+    const { _updated, ...now } = google.store['packrat.packs']['03'];
+    assert.deepEqual(now, p03, 'Add pack 03 replaced the pack another device made, Cellmate link and all');
+    assert.equal(await p.locator('.tape').textContent(), '5.0 Ah #3');
+    assert.deepEqual(errors, [], 'errors on the phone');
+  } finally { await phone.close(); }
 }
 
 // The laptop, connected while Google takes 3 s to answer its first list (a cold start), with the phone's pack 01 linked

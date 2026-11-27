@@ -126,7 +126,8 @@ async function link(p) {
 }
 
 async function editPack(p) {
-  const exists = !!(p && pack(p.id));
+  // A stub from a sticker's page ({ id } only, no _updated) is a new pack even if that pack has come in since.
+  const exists = !!(p?._updated && pack(p.id));
   const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, fields: [
     { name: 'id', label: 'Number', value: p?.id || nextNumber(), inputmode: 'numeric', hint: 'Write it on the pack with a paint pen too.' },
     { name: 'label', label: 'Name', value: p?.label, placeholder: '5.0 Ah #1' },
@@ -155,7 +156,7 @@ function render() {
   if (r.view === 'item') {
     const p = pack(r.id), wait = ledger.notReady('packs');
     body = p ? renderPack(p) : [h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')), h('p', { class: 'empty' }, wait || `No pack ${r.id} yet.`),
-      !wait ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: fresh(() => editPack({ id: r.id })) }, `Add pack ${r.id}`)) : null];
+      !wait ? h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', onclick: fresh(() => pack(r.id) ? render() : editPack({ id: r.id })) }, `Add pack ${r.id}`)) : null];
   } else body = renderHome();
   mount(app, body);
   const st = $('#sync'); st.className = 'sync ' + ledger.state; st.textContent = ledger.statusText();
