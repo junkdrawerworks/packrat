@@ -35,6 +35,11 @@ export function readsFor(pack, reads) {
   return reads.filter(r => r.rom === pack.rom).sort((a, b) => when(b) - when(a));
 }
 
+// The newest reading whose cell voltages read. Cellmate posts a reading even when the voltages don't read cleanly twice
+// in a row (cycles and lock state, no cells), and one of those mustn't hide what the last good one said.
+export const hasCells = r => !!r?.cells?.length || r?.spreadmV != null;
+export const lastCells = rs => rs.find(hasCells) || null;
+
 // ROM ids Cellmate has read that no pack is linked to yet, newest reading of each.
 export function unpaired(packs, reads) {
   const linked = new Set(packs.map(p => p.rom).filter(Boolean));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { health, lowCells, readsFor, unpaired, openLoan, cyclesPerMonth } from '../js/packs.js';
+import { health, lowCells, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth } from '../js/packs.js';
 import { SAMPLE } from '../js/sample.js';
 const packs = SAMPLE['packrat.packs'], reads = SAMPLE['packrat.reads'], loans = SAMPLE['packrat.loans'];
 test('cell spread says how the pack is', () => {
@@ -37,4 +37,14 @@ test('loans and cycles a month', () => {
   assert.equal(openLoan(packs[0], loans), null);
   assert.equal(cyclesPerMonth(readsFor(packs[0], reads)), 5.7);
   assert.equal(cyclesPerMonth([reads[0]]), null);
+});
+test("a reading whose voltages didn't read doesn't hide the last one that did", () => {
+  const nov22 = { rom: 'X', cycles: 298, cells: [3800, 3810, 3683, 3805, 3802], spreadmV: 127, verdict: 'bad', at: Date.parse('2026-11-22T17:00:00Z') };
+  const nov27 = { rom: 'X', cycles: 300, locked: false, at: Date.parse('2026-11-27T17:00:00Z') };   // info read, no cells
+  const rs = readsFor({ rom: 'X' }, [nov22, nov27]);
+  assert.equal(rs[0], nov27, 'the newest reading still gives the cycles');
+  assert.equal(lastCells(rs), nov22);
+  assert.deepEqual([health(lastCells(rs)).state, health(lastCells(rs)).text], ['bad', 'weak cell (127 mV apart)']);
+  assert.equal(lastCells([nov27]), null, 'never a cell reading: still none');
+  assert.equal(health(lastCells([nov27])).state, 'none');
 });

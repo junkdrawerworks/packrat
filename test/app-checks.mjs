@@ -27,6 +27,17 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.equal(await page.locator('.cell.low').count(), 5);
   await page.click('text=‹ All packs');
   assert.equal(await page.locator('a.row[href="#01"] .chip').textContent(), 'discharged');
+  // a weak pack read again, and this time its voltages didn't read: it stays weak, with the last cells that did read
+  await page.click('a.row >> text=3.0 Ah');
+  await page.waitForSelector('.cells');
+  await page.evaluate(() => { const { ledger, render } = window.__packrat; ledger.put('reads', { id: 'r10', rom: '2833C1990C0000F0', model: 'BL1830B', cycles: 411, locked: true, at: Date.parse('2026-11-27T17:00:00Z') }); render(); });
+  await page.waitForSelector('section.card >> text=411');
+  assert.equal(await page.locator('section.card .chip').first().textContent(), 'weak cell', 'a reading with no cells hid the weak one');
+  assert.equal(await page.locator('section.card p.muted').textContent(), "Cells didn't read on Nov 27, 2026; these are from Nov 21, 2026.");
+  assert.equal(await page.locator('.cell').count(), 5);
+  assert.match(await page.locator('.facts').innerText(), /weak cell \(152 mV apart\)/);
+  await page.click('text=‹ All packs');
+  assert.equal(await page.locator('a.row[href="#03"] .chip').textContent(), 'weak');
   await page.goto(base + '?demo#04');
   await page.click('text=Link to Cellmate');
   await page.click('dialog >> button[type=submit]');

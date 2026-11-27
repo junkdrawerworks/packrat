@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText,
 import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, readsFor, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
+import { health, lowCells, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -28,9 +28,12 @@ function cells(r) {
     h('div', { class: 'cell' + (low[i] ? ' low' : '') }, h('i', {}, h('b', { style: `height:${Math.max(8, Math.min(100, (mv - 3000) / 12))}%` })), h('span', {}, (mv / 1000).toFixed(2)), h('small', {}, i + 1))));
 }
 
+// Two moments as days, or with the time when they're the same day.
+const apart = (a, b) => { const d = t => dayText(today(new Date(t))); return d(a) === d(b) ? [stampText(a), stampText(b)] : [d(a), d(b)]; };
+
 function packRow(p) {
-  const r = readsFor(p, reads())[0];
-  const hl = health(r), loan = openLoan(p, loans());
+  const rs = readsFor(p, reads()), r = rs[0];
+  const hl = health(lastCells(rs)), loan = openLoan(p, loans());
   return h('li', {}, h('a', { class: 'row', href: '#' + p.id },
     h('span', { class: 'num' }, p.id),
     h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} since ${dayText(loan.out)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
@@ -53,7 +56,8 @@ function renderHome() {
 
 function renderPack(p) {
   const rs = readsFor(p, reads());
-  const r = rs[0], hl = health(r), loan = openLoan(p, loans());
+  // the newest reading gives the cycles and the time; the newest one whose voltages read gives the cells and health
+  const r = rs[0], c = lastCells(rs), hl = health(c), loan = openLoan(p, loans());
   const cpm = cyclesPerMonth(rs);
   const past = loans().filter(l => l.pack === p.id && l.back).sort((a, b) => String(b.back).localeCompare(String(a.back))).slice(0, 5);
   return [
@@ -65,12 +69,13 @@ function renderPack(p) {
       : h('button', { type: 'button', class: 'btn big', onclick: () => lend(p) }, 'Lend it out')),
     r ? h('section', { class: 'card' }, h('h2', {}, 'Last reading'),
       h('p', {}, h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
-      cells(r),
+      c && c !== r ? h('p', { class: 'muted small' }, `Cells didn't read on ${apart(when(r), when(c))[0]}; these are from ${apart(when(r), when(c))[1]}.`) : null,
+      cells(c),
       h('dl', { class: 'facts' },
         h('dt', {}, 'Cells'), h('dd', {}, hl.text),
         h('dt', {}, 'Charge cycles'), h('dd', {}, String(r.cycles) + (cpm != null ? ` (about ${cpm} a month)` : '')),
-        r.packmV ? [h('dt', {}, 'Pack'), h('dd', {}, (r.packmV / 1000).toFixed(2) + ' V')] : null,
-        r.tempC != null ? [h('dt', {}, 'Temperature'), h('dd', {}, r.tempC + ' °C')] : null,
+        c?.packmV ? [h('dt', {}, 'Pack'), h('dd', {}, (c.packmV / 1000).toFixed(2) + ' V')] : null,
+        c?.tempC != null ? [h('dt', {}, 'Temperature'), h('dd', {}, c.tempC + ' °C')] : null,
         h('dt', {}, 'Locked'), h('dd', {}, r.locked ? 'Yes: Cellmate\'s guide covers clearing it' : 'No'),
         r.mfg ? [h('dt', {}, 'Made'), h('dd', {}, r.mfg)] : null))
       : h('div', { class: 'notice' }, h('p', {}, p.rom ? 'No readings yet. Put it on Cellmate while it\'s on your Wi-Fi.' : 'Not linked to Cellmate yet. Read it on Cellmate, then press Link below.')),
