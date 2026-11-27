@@ -174,7 +174,9 @@ async function editPack(p) {
     ledger.del('packs', p.id);
     for (const l of loans().filter(l => l.pack === p.id)) ledger.put('loans', { ...l, pack: id });
   }
-  const { retired, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
+  // a new number needs a new sticker (the old one still holds the old number): the panel starts as not written
+  const { retired, tagged, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
+  if (tagged && exists && p.id === id) doc.tagged = tagged;
   ledger.put('packs', gone.length ? { ...doc, gone, goneAt } : doc);
   go('#' + id); render();
 }

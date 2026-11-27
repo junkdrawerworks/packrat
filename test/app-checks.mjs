@@ -52,12 +52,17 @@ export async function appChecks({ page, ctx, base, assert }) {
   // pack 02 is out with the neighbour and gets a new number: it's still out, under the new one
   await page.goto('about:blank');
   await page.goto(base + '?demo#02');
+  await page.waitForSelector('.nfc');
+  await page.evaluate(() => { const { ledger, render } = window.__packrat; ledger.put('packs', { ...ledger.doc('packs', '02'), tagged: '2026-11-20' }); render(); });
+  await page.waitForSelector('.nfc .state >> text=Written Nov 20, 2026.');
   await page.click('#app >> text=Edit');
   assert.equal(await page.locator('label[for=f-id] small').textContent(), 'The number on its sticker. Changing it needs a new sticker.');
   await page.fill('#f-id', '08');
   await page.click('dialog >> button[type=submit]');
   await page.waitForSelector('.tape-cap >> text=Pack 08');
   assert.match(await page.locator('.notice.warn').innerText(), /Out with Neighbor/, 'renumbering lost who has it');
+  assert.equal(await page.locator('.nfc .state', { hasText: /^Written/ }).count(), 0, 'pack 08 says its sticker is written, but the sticker holds m/02');
+  assert.equal(await page.evaluate(() => window.__packrat.ledger.doc('packs', '08').tagged), undefined);
   await page.click('text=‹ All packs');
   await page.waitForSelector('.notice.warn >> text=Lent out:');
   assert.match(await page.locator('.notice.warn').innerText(), /Lent out: 5\.0 Ah #2 \(Neighbor\)/);
