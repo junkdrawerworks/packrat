@@ -120,7 +120,7 @@ async function lend(p) {
 async function editLoan(l) {
   const v = await sheet({ title: `Lent to ${l.who}`, danger: 'Delete', fields: [
     { name: 'who', label: 'To', value: l.who, required: true },
-    { name: 'out', label: 'Went out', type: 'date', value: l.out },
+    { name: 'out', label: 'Went out', type: 'date', value: l.out, required: true },
     { name: 'back', label: 'Came back', type: 'date', value: l.back },
     { name: 'note', label: 'Note', value: l.note } ] });
   if (!v) return;
@@ -128,8 +128,10 @@ async function editLoan(l) {
     if (await confirmSheet('Delete this loan?', `${l.who}, ${dayText(l.out)} to ${dayText(l.back)}. It goes from the pack's history.`, 'Delete')) { ledger.del('loans', l.id); toast('Loan deleted.'); render(); }
     return;
   }
-  const out = v.out || l.out, back = v.back || l.back;
-  if (back < out) { toast('It can\'t come back before it went out.', 'bad'); return; }
+  // Came back cleared: it's out again (a pack marked back by mistake), unless the pack is out on another loan now
+  const out = v.out || l.out, back = v.back || null, other = !back && loans().find(x => x.pack === l.pack && !x.back && x.id !== l.id);
+  if (other) { toast(`Pack ${l.pack} is already out with ${other.who}.`, 'bad'); return; }
+  if (back && back < out) { toast('It can\'t come back before it went out.', 'bad'); return; }
   ledger.put('loans', { ...(ledger.doc('loans', l.id) || l), who: v.who || l.who, out, back, note: v.note });
   toast('Saved.'); render();
 }

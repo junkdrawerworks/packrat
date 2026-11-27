@@ -119,6 +119,32 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.equal(await page.locator('.nfc > .msg:last-child').textContent(), 'Written. Tap it with the phone to check it opens this page.');
   await secondDevice({ ctx, base, assert });
   await stickerPage({ ctx, base, assert });
+  await loanChecks({ page, base, assert });
+}
+
+// A loan marked back by mistake: clearing Came back in its sheet puts the pack out again, unless it's out on another
+// loan now, which is said instead.
+async function loanChecks({ page, base, assert }) {
+  const l2 = () => page.evaluate(() => window.__packrat.ledger.doc('loans', 'l2'));
+  await page.goto('about:blank');
+  await page.goto(base + '?demo#01');
+  await page.click('text=Lend it out');
+  await page.fill('#f-who', 'Cousin');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.notice.warn >> text=Out with Cousin');
+  await page.click('button.loan >> text=Neighbor');
+  await page.fill('dialog[open] #f-back', '');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.toast.show >> text=Pack 01 is already out with Cousin.');
+  assert.equal((await l2()).back, '2026-09-09', 'an old loan was put back out while the pack is out on another');
+  await page.click('text=It came back');
+  await page.waitForSelector('text=Lend it out');
+  await page.click('button.loan >> text=Neighbor');
+  await page.fill('dialog[open] #f-back', '');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.notice.warn >> text=Out with Neighbor', { timeout: 5000 }).catch(() => {});
+  assert.equal((await l2()).back, null, 'clearing Came back was ignored');
+  assert.equal(await page.locator('#app button', { hasText: 'It came back' }).count(), 1);
 }
 
 // A phone that synced earlier, so Add pack N shows at once from its copy, opens pack 03's sticker while the ledger
