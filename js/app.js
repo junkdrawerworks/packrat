@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText,
 import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, readsFor, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
+import { health, lowCells, readsFor, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -23,9 +23,9 @@ const fresh = then => e => held(e.currentTarget, ledger.catchUp(['packs'])).then
 
 function cells(r) {
   if (!r?.cells?.length) return null;
-  const lo = Math.min(...r.cells), hi = Math.max(...r.cells);
+  const low = lowCells(r.cells);
   return h('div', { class: 'cells', 'aria-label': 'Cell voltages' }, r.cells.map((mv, i) =>
-    h('div', { class: 'cell' + (mv === lo && hi - lo > 30 ? ' low' : '') }, h('i', {}, h('b', { style: `height:${Math.max(8, Math.min(100, (mv - 3000) / 12))}%` })), h('span', {}, (mv / 1000).toFixed(2)), h('small', {}, i + 1))));
+    h('div', { class: 'cell' + (low[i] ? ' low' : '') }, h('i', {}, h('b', { style: `height:${Math.max(8, Math.min(100, (mv - 3000) / 12))}%` })), h('span', {}, (mv / 1000).toFixed(2)), h('small', {}, i + 1))));
 }
 
 function packRow(p) {
@@ -34,7 +34,7 @@ function packRow(p) {
   return h('li', {}, h('a', { class: 'row', href: '#' + p.id },
     h('span', { class: 'num' }, p.id),
     h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} since ${dayText(loan.out)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
-    h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, loan ? 'out' : hl.state === 'none' ? '—' : hl.state === 'ok' ? 'ok' : hl.state === 'warn' ? 'watch' : 'weak')));
+    h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, loan ? 'out' : hl.short)));
 }
 
 function renderHome() {
@@ -64,7 +64,7 @@ function renderPack(p) {
       ? h('button', { type: 'button', class: 'btn big', onclick: () => { ledger.put('loans', { ...loan, back: today() }); buzz(50); toast('Back home.'); render(); } }, 'It came back')
       : h('button', { type: 'button', class: 'btn big', onclick: () => lend(p) }, 'Lend it out')),
     r ? h('section', { class: 'card' }, h('h2', {}, 'Last reading'),
-      h('p', {}, h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, hl.state === 'ok' ? 'balanced' : hl.state === 'warn' ? 'watch' : hl.state === 'bad' ? 'weak cell' : 'no cells'), ` ${stampText(when(r))}`),
+      h('p', {}, h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
       cells(r),
       h('dl', { class: 'facts' },
         h('dt', {}, 'Cells'), h('dd', {}, hl.text),

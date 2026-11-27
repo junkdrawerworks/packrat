@@ -17,6 +17,16 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.waitForSelector('.notice.warn >> text=Out with Brother');
   await page.click('text=It came back');
   await page.waitForSelector('text=Lend it out');
+  // a deeply discharged pack: balanced cells, but every one under 2.5 V, as Cellmate posts it (verdict bad)
+  await page.goto(base + '?demo#01');
+  await page.waitForSelector('.cells');
+  const addRead = r => page.evaluate(r => { const { ledger, render } = window.__packrat; ledger.put('reads', { rom: '28F1A20C1A0000E3', model: 'BL1850B', ...r }); render(); }, r);
+  await addRead({ id: 'r9', cycles: 214, cells: [2364, 2370, 2364, 2378, 2371], spreadmV: 14, packmV: 11847, verdict: 'bad', at: Date.now() - 60000 });
+  await page.waitForSelector('.facts >> text=deeply discharged: lowest cell 2.36 V');
+  assert.equal(await page.locator('section.card .chip').first().textContent(), 'discharged', 'a deeply discharged pack read as balanced');
+  assert.equal(await page.locator('.cell.low').count(), 5);
+  await page.click('text=‹ All packs');
+  assert.equal(await page.locator('a.row[href="#01"] .chip').textContent(), 'discharged');
   await page.goto(base + '?demo#04');
   await page.click('text=Link to Cellmate');
   await page.click('dialog >> button[type=submit]');

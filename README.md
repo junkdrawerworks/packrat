@@ -11,7 +11,7 @@
 
 ## How it works
 
-- **Health.** The spread between the five cells: under 30 mV is balanced, over 100 mV means a weak cell.
+- **Health.** The spread between the five cells: under 30 mV is balanced, over 100 mV means a weak cell. A cell under 2.5 V (deeply discharged) or over 4.25 V reads weak too: those are Cellmate's own limits, and Packrat never calls a pack better than Cellmate did.
 - **Lending.** One tap to lend, one to mark it back, with who had it and when.
 - **Linking.** A new pack is matched to Cellmate's readings once; after that every reading lands on it.
 - **Switchboard.** Records live in your Switchboard ledger (a Google Sheet you own), so they follow you between the phone and the laptop. Connect from [tag.junkdrawer.works](https://tag.junkdrawer.works/).
