@@ -11,6 +11,10 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.waitForSelector('.cells');
   assert.equal(await page.locator('.cell').count(), 5);
   assert.match(await page.locator('.facts').innerText(), /weak cell \(152 mV apart\)/);
+  // which cell is low, in words as well as red, and for a screen reader
+  assert.deepEqual(await page.locator('.cell').evaluateAll(cs => cs.map(c => c.querySelector('em')?.textContent || '')), ['', 'low', '', '', ''], 'the low cell is marked by colour alone');
+  assert.equal(await page.getByRole('img', { name: 'Cells 1 to 5: 3.70, 3.56 (lowest), 3.71, 3.71, 3.71 volts' }).count(), 1);
+  assert.match(await page.locator('.facts').innerText(), /Lowest\s+cell 2, 3\.56 V/);
   await page.click('text=Lend it out');
   await page.fill('#f-who', 'Brother');
   await page.click('dialog >> button[type=submit]');

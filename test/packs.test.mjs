@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { health, lowCells, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth } from '../js/packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth } from '../js/packs.js';
 import { SAMPLE } from '../js/sample.js';
 const packs = SAMPLE['packrat.packs'], reads = SAMPLE['packrat.reads'], loans = SAMPLE['packrat.loans'];
 test('cell spread says how the pack is', () => {
@@ -47,4 +47,10 @@ test("a reading whose voltages didn't read doesn't hide the last one that did", 
   assert.deepEqual([health(lastCells(rs)).state, health(lastCells(rs)).text], ['bad', 'weak cell (127 mV apart)']);
   assert.equal(lastCells([nov27]), null, 'never a cell reading: still none');
   assert.equal(health(lastCells([nov27])).state, 'none');
+});
+test('the lowest cell by number, when one is marked low', () => {
+  assert.equal(lowest([3700, 3560, 3712, 3705, 3709]), 'cell 2');
+  assert.equal(lowest([2364, 2370, 2364, 2378, 2371]), 'cells 1 and 3');
+  assert.equal(lowest([3912, 3915, 3909, 3911, 3914]), '', 'balanced: no lowest named');
+  assert.equal(lowest(undefined), '');
 });

@@ -27,6 +27,13 @@ export function lowCells(cells) {
   return cells.map(mv => (mv === lo && hi - lo > SPREAD.watch) || mv < CELL.low);
 }
 
+// The lowest cell or cells by number, when any cell is marked low: 'cell 2', 'cells 1 and 3'.
+export function lowest(cells) {
+  if (!lowCells(cells).some(Boolean)) return '';
+  const lo = Math.min(...cells), n = cells.map((mv, i) => mv === lo ? i + 1 : 0).filter(Boolean);
+  return n.length === 1 ? `cell ${n[0]}` : `cells ${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+}
+
 export const when = r => r.at || r._updated || 0;
 
 // Readings for one pack, newest first.

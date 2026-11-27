@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, stampText,
 import { Ledger, watchConnectLinks, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -23,9 +23,13 @@ const fresh = then => e => held(e.currentTarget, ledger.catchUp(['packs'])).then
 
 function cells(r) {
   if (!r?.cells?.length) return null;
-  const low = lowCells(r.cells);
-  return h('div', { class: 'cells', 'aria-label': 'Cell voltages' }, r.cells.map((mv, i) =>
-    h('div', { class: 'cell' + (low[i] ? ' low' : '') }, h('i', {}, h('b', { style: `height:${Math.max(8, Math.min(100, (mv - 3000) / 12))}%` })), h('span', {}, (mv / 1000).toFixed(2)), h('small', {}, i + 1))));
+  const low = lowCells(r.cells), lo = Math.min(...r.cells), v = mv => (mv / 1000).toFixed(2);
+  // The low cell says so in words, not only in red (red and green bars are nearly the same lightness), and a screen
+  // reader hears the five as one picture: "Cells 1 to 5: 3.70, 3.56 (lowest), 3.71, 3.71, 3.71 volts".
+  const said = r.cells.map((mv, i) => v(mv) + (low[i] ? (mv === lo ? ' (lowest)' : ' (low)') : ''));
+  return h('div', { class: 'cells', role: 'img', 'aria-label': `Cells 1 to ${r.cells.length}: ${said.join(', ')} volts` }, r.cells.map((mv, i) =>
+    h('div', { class: 'cell' + (low[i] ? ' low' : '') }, h('i', {}, h('b', { style: `height:${Math.max(8, Math.min(100, (mv - 3000) / 12))}%` })), h('span', {}, v(mv)), h('small', {}, i + 1),
+      low[i] ? h('em', {}, 'low') : null)));
 }
 
 // Two moments as days, or with the time when they're the same day.
@@ -73,6 +77,7 @@ function renderPack(p) {
       cells(c),
       h('dl', { class: 'facts' },
         h('dt', {}, 'Cells'), h('dd', {}, hl.text),
+        lowest(c?.cells) ? [h('dt', {}, 'Lowest'), h('dd', {}, `${lowest(c.cells)}, ${(Math.min(...c.cells) / 1000).toFixed(2)} V`)] : null,
         h('dt', {}, 'Charge cycles'), h('dd', {}, String(r.cycles) + (cpm != null ? ` (about ${cpm} a month)` : '')),
         c?.packmV ? [h('dt', {}, 'Pack'), h('dd', {}, (c.packmV / 1000).toFixed(2) + ' V')] : null,
         c?.tempC != null ? [h('dt', {}, 'Temperature'), h('dd', {}, c.tempC + ' °C')] : null,
