@@ -21,6 +21,13 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.waitForSelector('.notice.warn >> text=Out with Brother');
   await page.click('text=It came back');
   await page.waitForSelector('text=Lend it out');
+  // that was a mistake: the loan in Lent before opens, and Delete takes it out of the history
+  await page.click('button.loan >> text=Brother');
+  await page.waitForSelector('dialog >> text=Lent to Brother');
+  await page.click('dialog >> text=Delete');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.toast.show >> text=Loan deleted.');
+  assert.equal(await page.locator('text=Lent before').count(), 0, 'a mistaken loan stays in the history');
   // a deeply discharged pack: balanced cells, but every one under 2.5 V, as Cellmate posts it (verdict bad)
   await page.goto(base + '?demo#01');
   await page.waitForSelector('.cells');
@@ -42,6 +49,36 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.match(await page.locator('.facts').innerText(), /weak cell \(152 mV apart\)/);
   await page.click('text=‹ All packs');
   assert.equal(await page.locator('a.row[href="#03"] .chip').textContent(), 'weak');
+  // pack 02 is out with the neighbour and gets a new number: it's still out, under the new one
+  await page.goto('about:blank');
+  await page.goto(base + '?demo#02');
+  await page.click('#app >> text=Edit');
+  assert.equal(await page.locator('label[for=f-id] small').textContent(), 'The number on its sticker. Changing it needs a new sticker.');
+  await page.fill('#f-id', '08');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.tape-cap >> text=Pack 08');
+  assert.match(await page.locator('.notice.warn').innerText(), /Out with Neighbor/, 'renumbering lost who has it');
+  await page.click('text=‹ All packs');
+  await page.waitForSelector('.notice.warn >> text=Lent out:');
+  assert.match(await page.locator('.notice.warn').innerText(), /Lent out: 5\.0 Ah #2 \(Neighbor\)/);
+  // pack 01 is deleted: its loan goes with it, its readings aren't offered as not linked, and a new pack 01 starts clean
+  await page.click('a.row >> text=5.0 Ah #1');
+  await page.click('#app >> text=Edit');
+  await page.click('dialog >> text=Delete');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.row >> text=3.0 Ah');
+  assert.equal(await page.locator('a.row[href="#01"]').count(), 0);
+  const notLinked = () => page.locator('.card li code').allTextContents();
+  assert.deepEqual(await notLinked(), ['2833D0110C000044'], "a deleted pack's readings are offered as not linked");
+  await page.click('text=Add a pack');
+  await page.fill('#f-id', '01');
+  await page.fill('#f-label', 'New 5.0 Ah');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.tape >> text=New 5.0 Ah');
+  assert.equal(await page.locator('text=Lent before').count(), 0, 'the new pack 01 inherited the old one\'s loans');
+  await page.click('text=‹ All packs');
+  await page.waitForSelector('a.row[href="#01"]');
+  assert.deepEqual(await notLinked(), ['2833D0110C000044']);
   // what Edit saves about a pack shows on its page: the note under the name, when it was bought, its capacity
   await page.goto('about:blank');
   await page.goto(base + '?demo#04');

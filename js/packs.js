@@ -47,9 +47,11 @@ export function readsFor(pack, reads) {
 export const hasCells = r => !!r?.cells?.length || r?.spreadmV != null;
 export const lastCells = rs => rs.find(hasCells) || null;
 
-// ROM ids Cellmate has read that no pack is linked to yet, newest reading of each.
+// ROM ids Cellmate has read that no pack is linked to yet, newest reading of each. A deleted pack stays in the ledger
+// as { id, retired: true, gone: [its rom] } (and a new pack given that number keeps `gone`), so its readings aren't
+// offered for linking again.
 export function unpaired(packs, reads) {
-  const linked = new Set(packs.map(p => p.rom).filter(Boolean));
+  const linked = new Set(packs.flatMap(p => [p.retired ? null : p.rom, ...(p.gone || [])]).filter(Boolean));
   const out = {};
   for (const r of reads) if (r.rom && !linked.has(r.rom) && (!out[r.rom] || when(r) > when(out[r.rom]))) out[r.rom] = r;
   return Object.values(out).sort((a, b) => when(b) - when(a));

@@ -11,10 +11,12 @@ const demo = new URLSearchParams(location.search).has('demo');
 watchConnectLinks('packrat', toast);
 const ledger = new Ledger('packrat', { demo: demo ? SAMPLE : null });
 const app = $('#app');
-const packs = () => ledger.docs('packs').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+// A deleted pack is kept as { id, retired: true, gone: [rom] } (see unpaired), out of sight.
+const packs = () => ledger.docs('packs').filter(p => !p.retired).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 const reads = () => ledger.docs('reads');
 const loans = () => ledger.docs('loans');
-const pack = id => ledger.doc('packs', id);
+const pack = id => { const p = ledger.doc('packs', id); return p && !p.retired ? p : null; };
+const loose = () => unpaired(ledger.docs('packs'), reads());
 const nextNumber = () => String(Math.max(0, ...packs().map(p => parseInt(p.id, 10) || 0)) + 1).padStart(2, '0');
 // A new pack waits until this phone has heard from the ledger (before that its copy can't say which numbers are taken,
 // and a save would replace the pack another device has under that number, Cellmate link and all), and asks for the
@@ -46,14 +48,14 @@ function packRow(p) {
 
 function renderHome() {
   const out = packs().filter(p => openLoan(p, loans()));
-  const loose = unpaired(packs(), reads()), wait = ledger.notReady('packs');
+  const unlinked = loose(), wait = ledger.notReady('packs');
   return [
     out.length ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, 'Lent out: '), out.map(p => `${p.label || p.id} (${openLoan(p, loans()).who})`).join(', '))) : null,
     h('ul', { class: 'list' }, packs().map(packRow)),
     !packs().length || wait ? h('p', { class: 'empty' }, wait || 'No packs yet. Number each pack with a marker, then add it here.') : null,
-    loose.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
+    unlinked.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
       h('p', { class: 'muted' }, 'Open a pack and press Link to attach its readings.'),
-      h('ul', { class: 'plain' }, loose.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
+      h('ul', { class: 'plain' }, unlinked.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
     h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', disabled: !!wait, onclick: fresh(() => editPack(null)) }, 'Add a pack')),
   ];
 }
@@ -93,7 +95,8 @@ function renderPack(p) {
          mine.length ? h('dl', { class: 'facts pack-facts' }, mine) : null],
     rs.length > 1 ? h('section', {}, h('h2', {}, 'History'), h('div', { class: 'tbl' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'Cycles'), h('th', {}, 'Spread'))),
       h('tbody', {}, rs.slice(0, 12).map(x => h('tr', {}, h('td', {}, dayText(today(new Date(when(x))))), h('td', { class: 'm' }, x.cycles), h('td', { class: 'm' }, x.spreadmV != null ? x.spreadmV + ' mV' : '—'))))))) : null,
-    past.length ? h('section', {}, h('h2', {}, 'Lent before'), h('ul', { class: 'plain' }, past.map(l => h('li', {}, `${l.who}: ${dayText(l.out)} to ${dayText(l.back)}`)))) : null,
+    past.length ? h('section', {}, h('h2', {}, 'Lent before'), h('ul', { class: 'loans' }, past.map(l => h('li', {},
+      h('button', { type: 'button', class: 'loan', onclick: () => editLoan(l) }, `${l.who}: ${dayText(l.out)} to ${dayText(l.back)}`))))) : null,
     h('div', { class: 'btns' },
       h('button', { type: 'button', class: 'btn ghost', onclick: () => link(p) }, p.rom ? 'Relink to Cellmate' : 'Link to Cellmate'),
       h('button', { type: 'button', class: 'btn ghost', onclick: () => editPack(p) }, 'Edit')),
@@ -113,14 +116,32 @@ async function lend(p) {
   buzz(50); toast(`Lent to ${v.who}.`); render();
 }
 
+// A loan from the history, to put right: who, the dates, or gone altogether (lent by mistake).
+async function editLoan(l) {
+  const v = await sheet({ title: `Lent to ${l.who}`, danger: 'Delete', fields: [
+    { name: 'who', label: 'To', value: l.who, required: true },
+    { name: 'out', label: 'Went out', type: 'date', value: l.out },
+    { name: 'back', label: 'Came back', type: 'date', value: l.back },
+    { name: 'note', label: 'Note', value: l.note } ] });
+  if (!v) return;
+  if (v.__danger) {
+    if (await confirmSheet('Delete this loan?', `${l.who}, ${dayText(l.out)} to ${dayText(l.back)}. It goes from the pack's history.`, 'Delete')) { ledger.del('loans', l.id); toast('Loan deleted.'); render(); }
+    return;
+  }
+  const out = v.out || l.out, back = v.back || l.back;
+  if (back < out) { toast('It can\'t come back before it went out.', 'bad'); return; }
+  ledger.put('loans', { ...(ledger.doc('loans', l.id) || l), who: v.who || l.who, out, back, note: v.note });
+  toast('Saved.'); render();
+}
+
 async function link(p) {
-  const loose = unpaired(packs(), reads());
-  if (!loose.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
+  const unlinked = loose();
+  if (!unlinked.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
   const v = await sheet({ title: 'Which reading is this pack?', ok: 'Link', fields: [
-    { name: 'rom', label: 'Read by Cellmate', type: 'select', options: loose.map(r => [r.rom, `${stampText(when(r))} · ${r.model || '?'} · ${r.cycles} cycles${r.label ? ' · ' + r.label : ''}`]) } ],
+    { name: 'rom', label: 'Read by Cellmate', type: 'select', options: unlinked.map(r => [r.rom, `${stampText(when(r))} · ${r.model || '?'} · ${r.cycles} cycles${r.label ? ' · ' + r.label : ''}`]) } ],
     body: h('p', { class: 'muted' }, 'The newest is at the top. Read just this pack on Cellmate if you\'re not sure.') });
   if (!v || v.__danger || !v.rom) return;
-  const r = loose.find(x => x.rom === v.rom);
+  const r = unlinked.find(x => x.rom === v.rom);
   ledger.put('packs', { ...p, rom: v.rom, model: p.model || r.model, ah: p.ah || r.capAh });
   toast('Linked.'); render();
 }
@@ -129,18 +150,31 @@ async function editPack(p) {
   // A stub from a sticker's page ({ id } only, no _updated) is a new pack even if that pack has come in since.
   const exists = !!(p?._updated && pack(p.id));
   const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, fields: [
-    { name: 'id', label: 'Number', value: p?.id || nextNumber(), inputmode: 'numeric', hint: 'Write it on the pack with a paint pen too.' },
+    { name: 'id', label: 'Number', value: p?.id || nextNumber(), inputmode: 'numeric', hint: exists ? 'The number on its sticker. Changing it needs a new sticker.' : 'Write it on the pack with a paint pen too.' },
     { name: 'label', label: 'Name', value: p?.label, placeholder: '5.0 Ah #1' },
     { name: 'model', label: 'Model', value: p?.model, placeholder: 'BL1850B' },
     { name: 'bought', label: 'Bought', type: 'date', value: p?.bought },
     { name: 'note', label: 'Note', value: p?.note } ] });
   if (!v) return;
-  if (v.__danger) { if (await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete')) { ledger.del('packs', p.id); go('#'); } return; }
+  if (v.__danger) {
+    if (!await confirmSheet(`Delete pack ${p.id}?`, 'Its loans and link go; Cellmate\'s readings stay in the ledger.', 'Delete')) return;
+    // its loans go (a new pack with this number starts with none), and it stays as a retired record so its readings
+    // aren't offered as "not linked"
+    for (const l of loans().filter(l => l.pack === p.id)) ledger.del('loans', l.id);
+    ledger.put('packs', { id: p.id, retired: true, gone: [...new Set([...(p.gone || []), p.rom].filter(Boolean))] });
+    go('#'); return;
+  }
   const id = (v.id || nextNumber()).replace(/[^0-9a-z-]/gi, '').toLowerCase() || nextNumber();
   if (!pack(id) && !ledger.synced('packs')) { toast(STILL_LOADING, 'bad'); return; }
   if ((!exists || p.id !== id) && pack(id)) { toast(`There's already a pack ${id}.`, 'bad'); return; }
-  if (exists && p.id !== id) ledger.del('packs', p.id);
-  ledger.put('packs', { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note });
+  // a pack once deleted under this number keeps its readings out of "not linked" under the new one too
+  const was = ledger.doc('packs', id), gone = [...new Set([...(p?.gone || []), ...(was?.retired ? was.gone || [] : [])])];
+  if (exists && p.id !== id) {                       // renumbered: its loans go with it
+    ledger.del('packs', p.id);
+    for (const l of loans().filter(l => l.pack === p.id)) ledger.put('loans', { ...l, pack: id });
+  }
+  const { retired, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
+  ledger.put('packs', gone.length ? { ...doc, gone } : doc);
   go('#' + id); render();
 }
 

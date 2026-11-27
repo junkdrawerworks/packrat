@@ -63,3 +63,9 @@ test('since when the cycles have stood still', () => {
   assert.equal(idleSince(rs.slice(0, 1)), t('2026-11-20'));
   assert.equal(idleSince([]), null);
 });
+test("a deleted pack's readings aren't offered for linking again, under a new pack with its number either", () => {
+  const retired = { id: '01', retired: true, gone: ['28F1A20C1A0000E3'] };
+  assert.deepEqual(unpaired([retired, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044']);
+  assert.deepEqual(unpaired([{ id: '01', label: 'New', gone: ['28F1A20C1A0000E3'] }, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044']);
+  assert.deepEqual(unpaired([{ id: '01', retired: true, rom: '28F1A20C1A0000E3' }, ...packs.slice(1)], reads).map(r => r.rom), ['2833D0110C000044', '28F1A20C1A0000E3'], 'a retired record links nothing by its rom');
+});
