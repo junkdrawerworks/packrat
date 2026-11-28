@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, d
 import { Ledger, watchConnectLinks, refusedLine, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, loanAge, loanAgeWords, lentLines, cyclesPerMonth, idleSince, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -37,20 +37,27 @@ function cells(r) {
 // Two moments as days, or with the time when they're the same day.
 const apart = (a, b) => { const d = t => dayText(today(new Date(t))); return d(a) === d(b) ? [stampText(a), stampText(b)] : [d(a), d(b)]; };
 
+// A lent pack's row says who has it and for how long, and keeps the health chip beside "out" when the last reading
+// says watch it or weak (lending a weak pack mustn't hide that it's weak).
+const STATE = { ok: 'ok', warn: 'warn', bad: 'bad' };
 function packRow(p) {
   const rs = readsFor(p, reads()), r = rs[0];
   const hl = health(lastCells(rs)), loan = openLoan(p, loans());
   return h('li', {}, h('a', { class: 'row', href: '#' + p.id },
     h('span', { class: 'num' }, p.id),
-    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} since ${dayText(loan.out)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
-    h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, loan ? 'out' : hl.short)));
+    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} · ${loanAge(loan)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
+    loan ? h('span', { class: 'chip warn' }, 'out') : null,
+    !loan || hl.state === 'warn' || hl.state === 'bad' ? h('span', { class: 'chip ' + (STATE[hl.state] || '') }, hl.short) : null));
 }
 
 function renderHome() {
-  const out = packs().filter(p => openLoan(p, loans()));
+  const out = packs().map(p => [p, openLoan(p, loans())]).filter(([, l]) => l), lent = lentLines(out);
   const unlinked = loose(), wait = ledger.notReady('packs');
   return [
-    out.length ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, 'Lent out: '), out.map(p => `${p.label || p.id} (${openLoan(p, loans()).who})`).join(', '))) : null,
+    // what's lent out, and what has been out a month or more, by the day it went
+    out.length ? h('div', { class: 'notice warn' },
+      lent.long.length ? h('p', {}, h('b', {}, 'Out over a month: '), lent.long.join('; ') + '.') : null,
+      lent.lent.length ? h('p', {}, h('b', {}, 'Lent out: '), lent.lent.join('; ')) : null) : null,
     h('ul', { class: 'list' }, packs().map(packRow)),
     !packs().length || wait ? h('p', { class: 'empty' }, wait || 'No packs yet. Number each pack with a marker, then add it here.') : null,
     unlinked.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
@@ -75,12 +82,12 @@ function renderPack(p) {
     h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')),
     h('div', { class: 'tape-wrap' }, h('span', { class: 'tape-cap' }, `Pack ${p.id}${p.model ? ' · ' + p.model : ''}`), h('div', { class: 'tape' }, p.label || p.model || 'Pack ' + p.id)),
     p.note ? h('p', { class: 'note' }, p.note) : null,
-    loan ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, `Out with ${loan.who}`), ` since ${dayText(loan.out)}.`, loan.note ? ' ' + loan.note : '')) : null,
+    loan ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, `Out with ${loan.who}`), ` since ${dayText(loan.out)} `, h('span', { style: 'white-space:nowrap' }, `(${loanAgeWords(loan)}).`), loan.note ? ' ' + loan.note : '')) : null,
     h('div', { class: 'btns stack' }, loan
       ? h('button', { type: 'button', class: 'btn big', onclick: () => { ledger.put('loans', { ...loan, back: today() }); buzz(50); toast('Back home.'); render(); } }, 'It came back')
       : h('button', { type: 'button', class: 'btn big', onclick: () => lend(p) }, 'Lend it out')),
     r ? h('section', { class: 'card' }, h('h2', {}, 'Last reading'),
-      h('p', {}, h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
+      h('p', {}, h('span', { class: 'chip ' + (STATE[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
       c && c !== r ? h('p', { class: 'muted small' }, `Cells didn't read on ${apart(when(r), when(c))[0]}; these are from ${apart(when(r), when(c))[1]}.`) : null,
       cells(c),
       h('dl', { class: 'facts' },

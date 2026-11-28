@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, cyclesPerMonth, idleSince } from '../js/packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, cyclesPerMonth, idleSince, LONG_LOAN, loanDays, loanAge, loanAgeWords, lentLines } from '../js/packs.js';
 import { SAMPLE } from '../js/sample.js';
 const packs = SAMPLE['packrat.packs'], reads = SAMPLE['packrat.reads'], loans = SAMPLE['packrat.loans'];
 test('cell spread says how the pack is', () => {
@@ -125,4 +125,20 @@ test('what Link offers: nothing when Cellmate has read nothing; deleted packs ou
   const again = { id: 'r20', rom: '28F1A20C1A0000E3', model: 'BL1850B', cycles: 213, at: Date.parse('2026-11-26T09:00:00Z') };
   assert.deepEqual(linkChoices(ps, [...reads, again], '04').slice(0, 2).map(x => x.read.id), ['r20', 'r5'], 'read again after the delete: offered, by that reading');
   assert.deepEqual(relinkPlan(ps, [...reads, again], '01', 'x'), [], 'a retired pack is never relinked');
+});
+
+// A loan out two months reads differently from one out a day: how long it's been out, and from 30 days, since when
+test('how long a loan has been out, and from a month on, since when', () => {
+  const l1 = loans[0], p02 = packs[1], at = (y, m, d) => new Date(y, m - 1, d, 10);   // pack 02 to Neighbor on Nov 15, 2026
+  assert.equal(LONG_LOAN, 30);
+  assert.deepEqual([loanDays(l1, at(2026, 11, 15)), loanDays(l1, at(2026, 11, 27)), loanDays(l1, at(2026, 12, 15)), loanDays(l1, at(2027, 1, 20))], [0, 12, 30, 66]);
+  assert.deepEqual([loanAge(l1, at(2026, 11, 15)), loanAge(l1, at(2026, 11, 16)), loanAge(l1, at(2026, 11, 27)), loanAge(l1, at(2027, 1, 10)), loanAge(l1, at(2027, 1, 20))],
+    ['today', '1 day', '12 days', '8 wk', '2 mo'], 'the kit\'s words, today on the first day');
+  assert.deepEqual([loanAgeWords(l1, at(2027, 1, 10)), loanAgeWords(l1, at(2027, 1, 20)), loanAgeWords(l1, at(2026, 11, 27)), loanAgeWords(l1, at(2029, 6, 1))], ['8 weeks', '2 months', '12 days', '2.5 years']);
+  assert.deepEqual(lentLines([[p02, l1]], at(2026, 11, 27)), { long: [], lent: ['5.0 Ah #2 to Neighbor, 12 days'] });
+  assert.deepEqual(lentLines([[p02, l1]], at(2026, 12, 14)), { long: [], lent: ['5.0 Ah #2 to Neighbor, 4 wk'] }, 'day 29 is not yet a month');
+  assert.deepEqual(lentLines([[p02, l1]], at(2026, 12, 15)), { long: ['5.0 Ah #2 with Neighbor since Nov 15'], lent: [] }, 'from day 30, since when, without this year');
+  assert.deepEqual(lentLines([[p02, l1], [packs[3], { pack: '04', who: 'Cousin', out: '2027-01-20' }]], at(2027, 1, 20)),
+    { long: ['5.0 Ah #2 with Neighbor since Nov 15, 2026'], lent: ['2.0 Ah compact to Cousin, today'] }, 'last year\'s day says its year');
+  assert.deepEqual(lentLines([[{ id: '09' }, { who: 'Brother', out: '2026-11-25' }]], at(2026, 11, 27)).lent, ['pack 09 to Brother, 2 days'], 'a pack with no name');
 });

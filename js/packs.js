@@ -1,4 +1,5 @@
 // Packrat's arithmetic: which readings belong to which pack, and what the cells say. No DOM: unit-tested.
+import { daysSince, ageText, dayText, parseDay } from './kit/ui.js';
 // A pack's five cells should sit within a few hundredths of a volt of each other. Cellmate (lxt_decode.h) calls a pack
 // bad, and won't clear its lock, when a cell is under 2.5 V (deeply discharged: the cells' rated end voltage) or over
 // 4.25 V, or the spread is over 100 mV; Packrat says "weak" for the same, so it never reads better than Cellmate does.
@@ -96,6 +97,22 @@ export function relinkPlan(packs, reads, packId, rom) {
 
 // The open loan for a pack, if it's out.
 export const openLoan = (pack, loans) => loans.filter(l => l.pack === pack.id && !l.back).sort((a, b) => String(b.out).localeCompare(String(a.out)))[0] || null;
+
+// How long a loan has been out, in whole days on the calendar, and in the kit's words: 'today', '3 days', '9 wk',
+// '2 mo' (spelled out on the pack's page: '9 weeks', '2 months'). From LONG_LOAN days it's out over a month.
+export const LONG_LOAN = 30;
+export const loanDays = (loan, now = new Date()) => daysSince(loan.out, now);
+export const loanAge = (loan, now = new Date()) => ageText(loan.out, now);
+export const loanAgeWords = (loan, now = new Date()) => loanAge(loan, now).replace(/ wk$/, ' weeks').replace(/ mo$/, ' months').replace(/ yr$/, ' years');
+// The home page's line about what's lent out: those out over a month, by the day they went ('since Nov 15', with the
+// year when it isn't this one), and the rest by how long. { long: ['5.0 Ah #2 with Neighbor since Nov 15'],
+// lent: ['3.0 Ah to Cousin, 12 days'] }; out: [[pack, its open loan]].
+export function lentLines(out, now = new Date()) {
+  const name = p => p.label || 'pack ' + p.id;
+  const since = day => { const t = dayText(day); return parseDay(day).getFullYear() === now.getFullYear() ? t.replace(/, \d+$/, '') : t; };
+  const long = out.filter(([, l]) => loanDays(l, now) >= LONG_LOAN), lent = out.filter(([, l]) => !(loanDays(l, now) >= LONG_LOAN));
+  return { long: long.map(([p, l]) => `${name(p)} with ${l.who} since ${since(l.out)}`), lent: lent.map(([p, l]) => `${name(p)} to ${l.who}, ${loanAge(l, now)}`) };
+}
 
 // Since when the cycle count has stood where it is now: the oldest of the newest readings with that count.
 export function idleSince(rs) {

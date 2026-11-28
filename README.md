@@ -12,7 +12,7 @@
 ## How it works
 
 - **Health.** The spread between the five cells: under 30 mV is balanced, over 100 mV means a weak cell. A cell under 2.5 V reads **discharged**, and one over 4.25 V **cell too high**, in red whatever the spread: those are Cellmate's own limits, where it calls a pack bad, and Packrat never calls a pack better than Cellmate did.
-- **Lending.** One tap to lend, one to mark it back, with who had it and when.
+- **Lending.** One tap to lend, one to mark it back, with who had it and when. The home page says how long each loan has been out, and once one has been out a month, since when; a lent pack still shows if its last reading says watch it or weak.
 - **Linking.** A new pack is matched to Cellmate's readings once; after that every reading lands on it. Relink offers every battery Cellmate has read, so one linked to the wrong pack moves to the right one (two packs read before linking can take each other's readings), and a pack can be unlinked.
 - **Switchboard.** Records live in your Switchboard ledger (a Google Sheet you own), so they follow you between the phone and the laptop. Connect from [tag.junkdrawer.works](https://tag.junkdrawer.works/).
 

@@ -71,8 +71,10 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.equal(await page.locator('.nfc .state', { hasText: /^Written/ }).count(), 0, 'pack 08 says its sticker is written, but the sticker holds m/02');
   assert.equal(await page.evaluate(() => window.__packrat.ledger.doc('packs', '08').tagged), undefined);
   await page.click('text=‹ All packs');
-  await page.waitForSelector('.notice.warn >> text=Lent out:');
-  assert.match(await page.locator('.notice.warn').innerText(), /Lent out: 5\.0 Ah #2 \(Neighbor\)/);
+  // still lent, under its new number (how it's said depends on today: the sample's loan went out on Nov 15, 2026)
+  await page.waitForSelector('a.row[href="#08"]');
+  assert.match(await page.locator('.notice.warn').innerText(), /^(Lent out: 5\.0 Ah #2 to Neighbor, |Out over a month: 5\.0 Ah #2 with Neighbor since Nov 15)/);
+  assert.match(await page.locator('a.row[href="#08"] .s').textContent(), /^Out with Neighbor · /);
   // pack 01 is deleted: its loan goes with it, its readings aren't offered as not linked, and a new pack 01 starts clean
   await page.click('a.row >> text=5.0 Ah #1');
   await page.click('#app >> text=Edit');
@@ -128,6 +130,7 @@ export async function appChecks({ page, ctx, base, assert }) {
   await stickerPage({ ctx, base, assert });
   await loanChecks({ page, base, assert });
   await relinkChecks({ page, base, assert });
+  await longLoanChecks({ ctx, base, assert });
   // Back from a pack 40 rows down lands where the list was
   const { backKeepsPlace } = await import('./kit-checks.mjs');
   // every link, button and card header on the sample's screens is a 44 px target
@@ -144,7 +147,7 @@ export async function appChecks({ page, ctx, base, assert }) {
 async function relinkChecks({ page, base, assert }) {
   const E = '28EEEE0C1A0000E5', F = '28FFFF0C1B0000F6';
   const rom = id => page.evaluate(id => window.__packrat.ledger.doc('packs', id)?.rom ?? null, id);
-  const home = () => page.evaluate(() => { location.hash = '#'; });
+  const home = async () => { await page.evaluate(() => { location.hash = '#'; }); await page.waitForSelector('a.row[href="#01"]'); };
   await page.goto('about:blank');
   await page.goto(base + '?demo');
   // the battery Cellmate read and no pack has: when it was read, on the home page
@@ -215,6 +218,37 @@ async function relinkChecks({ page, base, assert }) {
   await page.waitForSelector('text=Not linked to Cellmate yet');
   await home();
   assert.deepEqual(await page.locator('.card li code').allTextContents(), [F]);
+}
+
+// On Jan 20, 2027 the sample's loan of pack 02 (to Neighbor on Nov 15) has been out over two months: the home page
+// says so, by the day it went, apart from a pack lent this morning; its row says how long, with the "watch" its last
+// reading gave beside "out"; its page says how long in words.
+async function longLoanChecks({ ctx, base, assert }) {
+  const phone = await ctx.browser().newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: 'block' });
+  try {
+    const page = await phone.newPage();
+    await page.clock.setFixedTime(new Date(2027, 0, 20, 10, 0));
+    await page.goto(base + '?demo');
+    await page.waitForSelector('.notice.warn');
+    assert.equal(await page.locator('.notice.warn').innerText(), 'Out over a month: 5.0 Ah #2 with Neighbor since Nov 15, 2026.', 'a loan two months out reads as one made today');
+    assert.equal(await page.locator('a.row[href="#02"] .s').textContent(), 'Out with Neighbor · 2 mo');
+    assert.deepEqual(await page.locator('a.row[href="#02"] .chip').allTextContents(), ['out', 'watch'], 'lent out, it hid that its last reading says watch it');
+    assert.deepEqual(await page.locator('a.row[href="#02"] .chip').evaluateAll(cs => cs.map(c => c.className)), ['chip warn', 'chip warn']);
+    await page.click('a.row[href="#02"]');
+    await page.waitForSelector('.tape >> text=5.0 Ah #2');
+    assert.equal(await page.locator('.notice.warn').innerText(), 'Out with Neighbor since Nov 15, 2026 (2 months). With the leaf blower');
+    // pack 01 lent today: on the home page beside the long one, by how long it's been out
+    await page.evaluate(() => { location.hash = '#01'; });
+    await page.click('text=Lend it out');
+    await page.fill('#f-who', 'Cousin');
+    await page.click('dialog >> button[type=submit]');
+    await page.waitForSelector('.notice.warn >> text=Out with Cousin since Jan 20, 2027 (today).');
+    await page.evaluate(() => { location.hash = '#'; });
+    await page.waitForSelector('.notice.warn >> text=Lent out:');
+    assert.deepEqual(await page.locator('.notice.warn p').allInnerTexts(), ['Out over a month: 5.0 Ah #2 with Neighbor since Nov 15, 2026.', 'Lent out: 5.0 Ah #1 to Cousin, today']);
+    assert.deepEqual([await page.locator('a.row[href="#01"] .s').textContent(), await page.locator('a.row[href="#01"] .chip').allTextContents()], ['Out with Cousin · today', ['out']],
+      'a balanced pack lent out shows only "out"');
+  } finally { await phone.close(); }
 }
 
 // A loan marked back by mistake: clearing Came back in its sheet puts the pack out again, unless it's out on another
