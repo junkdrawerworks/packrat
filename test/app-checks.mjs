@@ -228,6 +228,27 @@ async function longLoanChecks({ ctx, base, assert }) {
   const phone = await ctx.browser().newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: 'block' });
   try {
     const page = await phone.newPage();
+    // Nov 26, 2026: pack 02's row is "Out with Neighbor · 11 days" beside two chips, too long for one line at 390 px.
+    // It wraps before the age, never between "11" and "days" (the home picture in the README showed "days" alone).
+    await page.clock.setFixedTime(new Date(2026, 10, 26, 15, 30));
+    await page.goto(base + '?demo');
+    await page.waitForSelector('a.row[href="#02"] .s');
+    await page.evaluate(() => document.fonts.ready);
+    const age = await page.locator('a.row[href="#02"] .s').evaluate(s => {
+      const text = s.textContent, at = text.lastIndexOf('11 days'), range = document.createRange(), lines = new Set();
+      if (at < 0) return { text };
+      // the age's characters, wherever they sit in the row's text nodes
+      const walk = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
+      for (let n, seen = 0; (n = walk.nextNode()); seen += n.length) {
+        if (seen <= at && at < seen + n.length) range.setStart(n, at - seen);
+        if (seen < at + 7 && at + 7 <= seen + n.length) range.setEnd(n, at + 7 - seen);
+      }
+      for (const r of range.getClientRects()) if (r.width) lines.add(Math.round(r.top));
+      return { text, lines: lines.size, rowLines: Math.round(s.getBoundingClientRect().height / parseFloat(getComputedStyle(s).lineHeight)) };
+    });
+    assert.equal(age.text, 'Out with Neighbor · 11 days');
+    assert.ok(age.rowLines >= 2, `the row fits on one line now (${age.rowLines}), so this no longer checks the wrap`);
+    assert.equal(age.lines, 1, '"11 days" is split over two lines in the home list');
     await page.clock.setFixedTime(new Date(2027, 0, 20, 10, 0));
     await page.goto(base + '?demo');
     await page.waitForSelector('.notice.warn');

@@ -38,14 +38,14 @@ function cells(r) {
 const apart = (a, b) => { const d = t => dayText(today(new Date(t))); return d(a) === d(b) ? [stampText(a), stampText(b)] : [d(a), d(b)]; };
 
 // A lent pack's row says who has it and for how long, and keeps the health chip beside "out" when the last reading
-// says watch it or weak (lending a weak pack mustn't hide that it's weak).
+// says watch it or weak (lending a weak pack mustn't hide that it's weak). The how long stays on one line ("11 days").
 const STATE = { ok: 'ok', warn: 'warn', bad: 'bad' };
 function packRow(p) {
   const rs = readsFor(p, reads()), r = rs[0];
   const hl = health(lastCells(rs)), loan = openLoan(p, loans());
   return h('li', {}, h('a', { class: 'row', href: '#' + p.id },
     h('span', { class: 'num' }, p.id),
-    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} · ${loanAge(loan)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
+    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? [`Out with ${loan.who} · `, h('span', { style: 'white-space:nowrap' }, loanAge(loan))] : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
     loan ? h('span', { class: 'chip warn' }, 'out') : null,
     !loan || hl.state === 'warn' || hl.state === 'bad' ? h('span', { class: 'chip ' + (STATE[hl.state] || '') }, hl.short) : null));
 }
