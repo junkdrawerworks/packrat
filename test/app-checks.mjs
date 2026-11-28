@@ -71,8 +71,10 @@ export async function appChecks({ page, ctx, base, assert }) {
   assert.equal(await page.locator('.nfc .state', { hasText: /^Written/ }).count(), 0, 'pack 08 says its sticker is written, but the sticker holds m/02');
   assert.equal(await page.evaluate(() => window.__packrat.ledger.doc('packs', '08').tagged), undefined);
   await page.click('text=‹ All packs');
-  await page.waitForSelector('.notice.warn >> text=Lent out:');
-  assert.match(await page.locator('.notice.warn').innerText(), /Lent out: 5\.0 Ah #2 \(Neighbor\)/);
+  // still lent, under its new number (how it's said depends on today: the sample's loan went out on Nov 15, 2026)
+  await page.waitForSelector('a.row[href="#08"]');
+  assert.match(await page.locator('.notice.warn').innerText(), /^(Lent out: 5\.0 Ah #2 to Neighbor, |Out over a month: 5\.0 Ah #2 with Neighbor since Nov 15)/);
+  assert.match(await page.locator('a.row[href="#08"] .s').textContent(), /^Out with Neighbor · /);
   // pack 01 is deleted: its loan goes with it, its readings aren't offered as not linked, and a new pack 01 starts clean
   await page.click('a.row >> text=5.0 Ah #1');
   await page.click('#app >> text=Edit');
@@ -98,7 +100,7 @@ export async function appChecks({ page, ctx, base, assert }) {
   await page.click('a.row[href="#01"]');
   await page.click('#app >> text=Link to Cellmate');
   const offered = await page.locator('dialog[open] #f-rom option').evaluateAll(os => os.map(o => o.value));
-  assert.deepEqual(offered, ['28F1A20C1A0000E3', '2833D0110C000044']);
+  assert.deepEqual(offered, ['28F1A20C1A0000E3', '2833D0110C000044', '2833C1990C0000F0', '28F1A20C1B0000A1'], 'the two no pack has first, then those on packs 03 and 02');
   await page.click('dialog >> button[type=submit]');
   await page.waitForSelector('.cells');
   assert.equal(await page.evaluate(() => window.__packrat.ledger.doc('packs', '01').rom), '28F1A20C1A0000E3');
@@ -127,12 +129,144 @@ export async function appChecks({ page, ctx, base, assert }) {
   await secondDevice({ ctx, base, assert });
   await stickerPage({ ctx, base, assert });
   await loanChecks({ page, base, assert });
+  await relinkChecks({ page, base, assert });
+  await longLoanChecks({ ctx, base, assert });
+  await oneDigitChecks({ page, base, assert });
   // Back from a pack 40 rows down lands where the list was
   const { backKeepsPlace } = await import('./kit-checks.mjs');
   // every link, button and card header on the sample's screens is a 44 px target
   await (await import('./kit-checks.mjs')).targetsAudit({ browser: ctx.browser(), base, assert, hashes: ['', '#01', '#02', '#03', '#09'] });
   await backKeepsPlace({ browser: ctx.browser(), base, assert, app: 'packrat', colls: { reads: [], loans: [],
     packs: Array.from({ length: 50 }, (_, i) => ({ id: String(i + 1).padStart(2, '0'), label: `5.0 Ah #${i + 1}`, model: 'BL1850B' })) } });
+}
+
+// Cellmate read two new batteries before either pack was linked, and each pack was linked to the other's reading (the
+// newest is at the top of the sheet, and it was the second pack's). Each is put right from its own page with no
+// delete: Relink on pack 05 offers its battery from pack 06 ("now on pack 06: moves here"), even though every reading
+// is linked, and moves it; pack 06, left unlinked, then takes the one left over. The model each took from its link
+// follows the battery.
+async function relinkChecks({ page, base, assert }) {
+  const E = '28EEEE0C1A0000E5', F = '28FFFF0C1B0000F6';
+  const rom = id => page.evaluate(id => window.__packrat.ledger.doc('packs', id)?.rom ?? null, id);
+  const home = async () => { await page.evaluate(() => { location.hash = '#'; }); await page.waitForSelector('a.row[href="#01"]'); };
+  await page.goto('about:blank');
+  await page.goto(base + '?demo');
+  // the battery Cellmate read and no pack has: when it was read, on the home page
+  assert.match(await page.locator('.card li').first().innerText(), /^2833D0110C000044 BL1860B "new 6Ah" · 31 cycles · read [A-Z][a-z]{2} \d{1,2}(, \d{4})?, \d{1,2}:\d\d [ap]m$/);
+  await page.evaluate(() => { location.hash = '#04'; });
+  await page.click('#app >> text=Link to Cellmate');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('code >> text=2833D0110C000044');
+  await page.evaluate(([E, F]) => { const { ledger, render } = window.__packrat, t = Date.now();
+    ledger.put('reads', { id: 'r30', rom: E, model: 'BL1850B', cycles: 12, cells: [4001, 4003, 4002, 4000, 4002], spreadmV: 3, at: t - 120000 });
+    ledger.put('reads', { id: 'r31', rom: F, model: 'BL1860B', cycles: 45, cells: [3951, 3949, 3950, 3952, 3950], spreadmV: 3, at: t - 60000 }); render(); }, [E, F]);
+  for (const [n, name] of [['05', 'Pack five'], ['06', 'Pack six']]) {
+    await home();
+    await page.click('text=Add a pack');
+    await page.fill('#f-id', n);
+    await page.fill('#f-label', name);
+    await page.click('dialog >> button[type=submit]');
+    await page.waitForSelector(`.tape >> text=${name}`);
+    await page.click('#app >> text=Link to Cellmate');
+    await page.click('dialog >> button[type=submit]');          // the newest, at the top
+    await page.waitForSelector('.cells');
+  }
+  assert.deepEqual([await rom('05'), await rom('06')], [F, E], 'not the crossed pair this check is for');
+  assert.equal(await page.evaluate(() => window.__packrat.ledger.docs('packs').length), 6);
+  // pack 05: every reading is linked, and Relink still opens, with pack 06's battery offered to move here
+  await page.evaluate(() => { location.hash = '#05'; });
+  await page.waitForSelector('.tape-cap >> text=Pack 05 · BL1860B');
+  await page.click('#app >> text=Relink to Cellmate');
+  await page.waitForSelector('dialog[open] #f-rom', { timeout: 3000 });
+  const opts = await page.locator('dialog[open] #f-rom option').evaluateAll(os => os.map(o => [o.value, o.textContent]));
+  assert.deepEqual(opts.map(o => o[0]), [E, '2833D0110C000044', '2833C1990C0000F0', '28F1A20C1B0000A1', '28F1A20C1A0000E3', F, '']);
+  assert.match(opts[0][1], /^[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d [ap]m · 12 cycles · …00E5 · BL1850B · now on pack 06: moves here$/);
+  assert.equal(opts.at(-1)[1], 'None: unlink this pack');
+  assert.equal(await page.inputValue('dialog[open] #f-rom'), F, 'Relink starts on the battery it has');
+  await page.selectOption('dialog[open] #f-rom', E);
+  assert.equal(await page.locator('dialog[open] .link-hint').textContent(), 'On pack 06 (Pack six) now. Linking moves it here, and pack 06 is left unlinked.');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.toast.show >> text=Linked. Pack 06 is unlinked now: open it and link its own reading.');
+  assert.deepEqual([await rom('05'), await rom('06')], [E, null]);
+  await page.waitForSelector('.tape-cap >> text=Pack 05 · BL1850B');
+  // pack 06 takes the battery left over, which is first on its list
+  await page.evaluate(() => { location.hash = '#06'; });
+  await page.waitForSelector('text=Not linked to Cellmate yet');
+  await page.click('#app >> text=Link to Cellmate');
+  assert.equal(await page.inputValue('dialog[open] #f-rom'), F);
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.tape-cap >> text=Pack 06 · BL1860B');
+  assert.deepEqual([await rom('05'), await rom('06')], [E, F], 'the crossed pair is still crossed');
+  assert.deepEqual(await page.evaluate(() => window.__packrat.ledger.docs('packs').map(p => [p.id, !!p.retired]).sort()),
+    [['01', false], ['02', false], ['03', false], ['04', false], ['05', false], ['06', false]], 'a pack was deleted to put it right');
+  // None unlinks: its battery shows on the home page as not linked again
+  await page.click('#app >> text=Relink to Cellmate');
+  await page.selectOption('dialog[open] #f-rom', '');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('text=Not linked to Cellmate yet');
+  // a model typed in Edit is the pack's own: linked again, it stays
+  await page.click('#app >> text=Edit');
+  await page.fill('#f-model', 'XR 6.0');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.tape-cap >> text=Pack 06 · XR 6.0');
+  await page.click('#app >> text=Link to Cellmate');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('.cells');
+  assert.equal(await page.locator('.tape-wrap .tape-cap').textContent(), 'Pack 06 · XR 6.0', 'a typed model was replaced by the reading\'s');
+  await page.click('#app >> text=Relink to Cellmate');
+  await page.selectOption('dialog[open] #f-rom', '');
+  await page.click('dialog >> button[type=submit]');
+  await page.waitForSelector('text=Not linked to Cellmate yet');
+  await home();
+  assert.deepEqual(await page.locator('.card li code').allTextContents(), [F]);
+}
+
+// On Jan 20, 2027 the sample's loan of pack 02 (to Neighbor on Nov 15) has been out over two months: the home page
+// says so, by the day it went, apart from a pack lent this morning; its row says how long, with the "watch" its last
+// reading gave beside "out"; its page says how long in words.
+async function longLoanChecks({ ctx, base, assert }) {
+  const phone = await ctx.browser().newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: 'block' });
+  try {
+    const page = await phone.newPage();
+    await page.clock.setFixedTime(new Date(2027, 0, 20, 10, 0));
+    await page.goto(base + '?demo');
+    await page.waitForSelector('.notice.warn');
+    assert.equal(await page.locator('.notice.warn').innerText(), 'Out over a month: 5.0 Ah #2 with Neighbor since Nov 15, 2026.', 'a loan two months out reads as one made today');
+    assert.equal(await page.locator('a.row[href="#02"] .s').textContent(), 'Out with Neighbor · 2 mo');
+    assert.deepEqual(await page.locator('a.row[href="#02"] .chip').allTextContents(), ['out', 'watch'], 'lent out, it hid that its last reading says watch it');
+    assert.deepEqual(await page.locator('a.row[href="#02"] .chip').evaluateAll(cs => cs.map(c => c.className)), ['chip warn', 'chip warn']);
+    await page.click('a.row[href="#02"]');
+    await page.waitForSelector('.tape >> text=5.0 Ah #2');
+    assert.equal(await page.locator('.notice.warn').innerText(), 'Out with Neighbor since Nov 15, 2026 (2 months). With the leaf blower');
+    // pack 01 lent today: on the home page beside the long one, by how long it's been out
+    await page.evaluate(() => { location.hash = '#01'; });
+    await page.click('text=Lend it out');
+    await page.fill('#f-who', 'Cousin');
+    await page.click('dialog >> button[type=submit]');
+    await page.waitForSelector('.notice.warn >> text=Out with Cousin since Jan 20, 2027 (today).');
+    await page.evaluate(() => { location.hash = '#'; });
+    await page.waitForSelector('.notice.warn >> text=Lent out:');
+    assert.deepEqual(await page.locator('.notice.warn p').allInnerTexts(), ['Out over a month: 5.0 Ah #2 with Neighbor since Nov 15, 2026.', 'Lent out: 5.0 Ah #1 to Cousin, today']);
+    assert.deepEqual([await page.locator('a.row[href="#01"] .s').textContent(), await page.locator('a.row[href="#01"] .chip').allTextContents()], ['Out with Cousin · today', ['out']],
+      'a balanced pack lent out shows only "out"');
+  } finally { await phone.close(); }
+}
+
+// A pack typed as 3 on a sheet the 1.0 ledger script wrote is listed as 03 once 1.1 is pasted (with a deleted "3"),
+// and its sticker still holds m/3: that opens pack 03, not "Add pack 3". A one-digit number with no 0n pack, or one
+// that has a pack of its own, opens as before.
+async function oneDigitChecks({ page, base, assert }) {
+  await page.goto('about:blank');
+  await page.goto(base + '?demo#3');
+  await page.waitForSelector('.tape >> text=3.0 Ah', { timeout: 3000 });
+  assert.equal(await page.evaluate(() => location.hash), '#03');
+  assert.equal(await page.locator('text=Add pack 3').count(), 0);
+  await page.evaluate(() => { location.hash = '#5'; });
+  await page.waitForSelector('text=No pack 5 yet.');
+  assert.equal(await page.evaluate(() => location.hash), '#5');
+  await page.evaluate(() => { const { ledger } = window.__packrat; ledger.put('packs', { id: '4', label: 'Typed as 4' }); location.hash = '#4'; });
+  await page.waitForSelector('.tape >> text=Typed as 4');
+  assert.equal(await page.evaluate(() => location.hash), '#4');
 }
 
 // A loan marked back by mistake: clearing Came back in its sheet puts the pack out again, unless it's out on another

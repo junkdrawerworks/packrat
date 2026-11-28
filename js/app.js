@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, d
 import { Ledger, watchConnectLinks, refusedLine, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, loanAge, loanAgeWords, lentLines, cyclesPerMonth, idleSince, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -37,25 +37,32 @@ function cells(r) {
 // Two moments as days, or with the time when they're the same day.
 const apart = (a, b) => { const d = t => dayText(today(new Date(t))); return d(a) === d(b) ? [stampText(a), stampText(b)] : [d(a), d(b)]; };
 
+// A lent pack's row says who has it and for how long, and keeps the health chip beside "out" when the last reading
+// says watch it or weak (lending a weak pack mustn't hide that it's weak).
+const STATE = { ok: 'ok', warn: 'warn', bad: 'bad' };
 function packRow(p) {
   const rs = readsFor(p, reads()), r = rs[0];
   const hl = health(lastCells(rs)), loan = openLoan(p, loans());
   return h('li', {}, h('a', { class: 'row', href: '#' + p.id },
     h('span', { class: 'num' }, p.id),
-    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} since ${dayText(loan.out)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
-    h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, loan ? 'out' : hl.short)));
+    h('span', { class: 'main' }, h('span', { class: 't' }, p.label || p.model || 'Pack ' + p.id), h('span', { class: 's' }, loan ? `Out with ${loan.who} · ${loanAge(loan)}` : r ? `${r.cycles} cycles · read ${dayText(today(new Date(when(r))))}` : p.rom ? 'No readings yet' : 'Not linked to Cellmate')),
+    loan ? h('span', { class: 'chip warn' }, 'out') : null,
+    !loan || hl.state === 'warn' || hl.state === 'bad' ? h('span', { class: 'chip ' + (STATE[hl.state] || '') }, hl.short) : null));
 }
 
 function renderHome() {
-  const out = packs().filter(p => openLoan(p, loans()));
+  const out = packs().map(p => [p, openLoan(p, loans())]).filter(([, l]) => l), lent = lentLines(out);
   const unlinked = loose(), wait = ledger.notReady('packs');
   return [
-    out.length ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, 'Lent out: '), out.map(p => `${p.label || p.id} (${openLoan(p, loans()).who})`).join(', '))) : null,
+    // what's lent out, and what has been out a month or more, by the day it went
+    out.length ? h('div', { class: 'notice warn' },
+      lent.long.length ? h('p', {}, h('b', {}, 'Out over a month: '), lent.long.join('; ') + '.') : null,
+      lent.lent.length ? h('p', {}, h('b', {}, 'Lent out: '), lent.lent.join('; ')) : null) : null,
     h('ul', { class: 'list' }, packs().map(packRow)),
     !packs().length || wait ? h('p', { class: 'empty' }, wait || 'No packs yet. Number each pack with a marker, then add it here.') : null,
     unlinked.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
       h('p', { class: 'muted' }, 'Open a pack and press Link to attach its readings.'),
-      h('ul', { class: 'plain' }, unlinked.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
+      h('ul', { class: 'plain' }, unlinked.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles · read ${stampText(when(r))}`)))) : null,
     h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', disabled: !!wait, onclick: fresh(() => editPack(null)) }, 'Add a pack')),
   ];
 }
@@ -75,12 +82,12 @@ function renderPack(p) {
     h('p', { class: 'crumb' }, h('a', { href: '#' }, '‹ All packs')),
     h('div', { class: 'tape-wrap' }, h('span', { class: 'tape-cap' }, `Pack ${p.id}${p.model ? ' · ' + p.model : ''}`), h('div', { class: 'tape' }, p.label || p.model || 'Pack ' + p.id)),
     p.note ? h('p', { class: 'note' }, p.note) : null,
-    loan ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, `Out with ${loan.who}`), ` since ${dayText(loan.out)}.`, loan.note ? ' ' + loan.note : '')) : null,
+    loan ? h('div', { class: 'notice warn' }, h('p', {}, h('b', {}, `Out with ${loan.who}`), ` since ${dayText(loan.out)} `, h('span', { style: 'white-space:nowrap' }, `(${loanAgeWords(loan)}).`), loan.note ? ' ' + loan.note : '')) : null,
     h('div', { class: 'btns stack' }, loan
       ? h('button', { type: 'button', class: 'btn big', onclick: () => { ledger.put('loans', { ...loan, back: today() }); buzz(50); toast('Back home.'); render(); } }, 'It came back')
       : h('button', { type: 'button', class: 'btn big', onclick: () => lend(p) }, 'Lend it out')),
     r ? h('section', { class: 'card' }, h('h2', {}, 'Last reading'),
-      h('p', {}, h('span', { class: 'chip ' + ({ ok: 'ok', warn: 'warn', bad: 'bad' }[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
+      h('p', {}, h('span', { class: 'chip ' + (STATE[hl.state] || '') }, hl.chip), ` ${stampText(when(r))}`),
       c && c !== r ? h('p', { class: 'muted small' }, `Cells didn't read on ${apart(when(r), when(c))[0]}; these are from ${apart(when(r), when(c))[1]}.`) : null,
       cells(c),
       h('dl', { class: 'facts' },
@@ -141,16 +148,35 @@ async function editLoan(l) {
   toast('Saved.'); render();
 }
 
+// Link to Cellmate: which battery is inside this pack, from every one Cellmate has read. Those no pack has come first;
+// one on another pack can be moved here (two packs read before linking can each take the other's reading), and a
+// linked pack can be unlinked. The line under the choice says what picking it does.
 async function link(p) {
-  const unlinked = loose();
-  if (!unlinked.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
-  const v = await sheet({ title: 'Which reading is this pack?', ok: 'Link', fields: [
-    { name: 'rom', label: 'Read by Cellmate', type: 'select', options: unlinked.map(r => [r.rom, `${stampText(when(r))} · ${r.model || '?'} · ${r.cycles} cycles${r.label ? ' · ' + r.label : ''}`]) } ],
+  const choices = linkChoices(ledger.docs('packs'), reads(), p.id);
+  if (!choices.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
+  const said = c => [c.read ? stampText(when(c.read)) : null, c.read ? `${c.read.cycles} cycles` : null, '…' + c.rom.slice(-4), c.read?.model, c.read?.label,
+    c.on === 'here' ? 'linked now' : c.on ? `now on pack ${c.on}: moves here` : null].filter(Boolean).join(' · ');
+  const options = choices.map(c => [c.rom, said(c)]);
+  if (p.rom) options.push(['', 'None: unlink this pack']);
+  const asked = sheet({ title: p.rom ? 'Which battery is in this pack?' : 'Which reading is this pack?', ok: 'Link', fields: [
+    { name: 'rom', label: 'Read by Cellmate', type: 'select', value: p.rom || choices[0].rom, options } ],
     body: h('p', { class: 'muted' }, 'The newest is at the top. Read just this pack on Cellmate if you\'re not sure.') });
-  if (!v || v.__danger || !v.rom) return;
-  const r = unlinked.find(x => x.rom === v.rom);
-  ledger.put('packs', { ...p, rom: v.rom, model: p.model || r.model, ah: p.ah || r.capAh });
-  toast('Linked.'); render();
+  const sel = $('dialog[open] #f-rom'), hint = h('small', { class: 'link-hint', 'aria-live': 'polite' });
+  const tell = () => {
+    const c = choices.find(x => x.rom === sel.value);
+    hint.textContent = !c ? 'This pack is left unlinked, and its readings show on the home page as not linked.'
+      : c.on === 'here' ? 'Linked to this pack now.' : !c.on ? 'Not linked to any pack yet.'
+      : `On pack ${c.on}${pack(c.on)?.label ? ` (${pack(c.on).label})` : ''} now. Linking moves it here, and pack ${c.on} is left unlinked.`;
+  };
+  sel?.after(hint); sel?.addEventListener('change', tell); if (sel) tell();
+  const v = await asked;
+  if (!v || v.__danger) return;
+  const puts = relinkPlan(ledger.docs('packs'), reads(), p.id, v.rom);
+  if (!puts.length) { toast('No change.'); return; }
+  for (const d of puts) ledger.put('packs', d);   // the other pack first: it loses the battery, then this one gets it
+  const moved = puts.filter(d => d.id !== p.id).map(d => d.id);
+  toast(!v.rom ? 'Unlinked.' : moved.length ? `Linked. Pack ${moved.join(' and ')} ${moved.length > 1 ? 'are' : 'is'} unlinked now: open it and link its own reading.` : 'Linked.');
+  render();
 }
 
 async function editPack(p) {
@@ -190,12 +216,16 @@ async function editPack(p) {
   // a new number needs a new sticker (the old one still holds the old number): the panel starts as not written
   const { retired, tagged, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
   if (tagged && exists && p.id === id) doc.tagged = tagged;
+  if (v.model !== (p?.model || '')) delete doc.modelFrom;          // typed in Edit: it stays through a relink
   ledger.put('packs', gone.length ? { ...doc, gone, goneAt } : doc);
   go('#' + id); render();
 }
 
 function render() {
-  const r = route();
+  let r = route();
+  // A one-digit number with no pack of its own opens its 0n pack (m/3 is pack 03): a pack typed as 3 on a sheet the
+  // 1.0 ledger script wrote is listed as 03 once 1.1 is pasted, and its sticker still holds m/3.
+  if (r.view === 'item' && /^[0-9]$/.test(r.id) && !pack(r.id) && pack('0' + r.id)) { history.replaceState(history.state, '', '#0' + r.id); r = route(); }
   if (!ledger.connected) {
     mount(app, h('div', { class: 'card' }, h('h2', {}, 'Connect first'),
       h('p', {}, 'Packrat keeps its packs in your Switchboard ledger. Open Switchboard and press Connect beside Packrat.'),
