@@ -99,8 +99,9 @@ export function relinkPlan(packs, reads, packId, rom) {
 export const openLoan = (pack, loans) => loans.filter(l => l.pack === pack.id && !l.back).sort((a, b) => String(b.out).localeCompare(String(a.out)))[0] || null;
 
 // How long a loan has been out, in whole days on the calendar, and in the kit's words: 'today', '3 days', '9 wk',
-// '2 mo' (spelled out on the pack's page: '9 weeks', '2 months'). From LONG_LOAN days it's out over a month.
-export const LONG_LOAN = 30;
+// '2 mo' (spelled out on the pack's page: '9 weeks', '2 months'). From LONG_LOAN days it's out over a month: day 32, the
+// first the kit says '5 wk', and past any month's length (at 30 and 31 days the row still says '4 wk').
+export const LONG_LOAN = 32;
 export const loanDays = (loan, now = new Date()) => daysSince(loan.out, now);
 export const loanAge = (loan, now = new Date()) => ageText(loan.out, now);
 export const loanAgeWords = (loan, now = new Date()) => loanAge(loan, now).replace(/ wk$/, ' weeks').replace(/ mo$/, ' months').replace(/ yr$/, ' years');
