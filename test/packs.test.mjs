@@ -10,6 +10,13 @@ test('cell spread says how the pack is', () => {
   assert.equal(health(null).state, 'none');
   assert.equal(health({ spreadmV: 152 }).text, 'weak cell (152 mV apart)', 'the guide quotes this');
 });
+test("balanced up to 50 mV, watch from there to 100, weak over 100: Cellmate's own lines", () => {
+  assert.deepEqual([45, 50, 51, 100, 101].map(s => health({ spreadmV: s }).state), ['ok', 'ok', 'warn', 'warn', 'bad'], 'a pack Cellmate calls balanced read watch');
+  assert.equal(health({ cells: [3912, 3915, 3870, 3911, 3914] }).text, 'balanced (45 mV apart)');
+  assert.deepEqual(lowCells([3912, 3915, 3870, 3911, 3914]), [false, false, false, false, false], 'a cell 45 mV down is marked low on a balanced pack');
+  assert.deepEqual(lowCells([3912, 3915, 3860, 3911, 3914]), [false, false, true, false, false], 'past 50 mV the lowest cell is marked');
+  assert.equal(lowest([3912, 3915, 3870, 3911, 3914]), '');
+});
 test("Cellmate's own limits: a cell under 2.5 V or over 4.25 V is bad, whatever the spread", () => {
   const flat = { cells: [2364, 2370, 2364, 2378, 2371], spreadmV: 14 };
   assert.deepEqual([health({ ...flat, verdict: 'bad' }).state, health(flat).state], ['bad', 'bad'], 'a deeply discharged pack read as balanced');
@@ -19,10 +26,10 @@ test("Cellmate's own limits: a cell under 2.5 V or over 4.25 V is bad, whatever 
   assert.equal(health(high).text, 'a cell over 4.25 V: highest cell 4.26 V');
   assert.equal(health({ cells: [2500, 2510, 2505, 2500, 2502], spreadmV: 10 }).state, 'ok', 'exactly 2.5 V is still in');
   assert.equal(health({ cells: [4250, 4240, 4245, 4250, 4248], spreadmV: 10 }).state, 'ok', 'exactly 4.25 V is still in');
-  // never better than Cellmate's verdict; stricter is fine (Packrat watches from 30 mV)
+  // never better than Cellmate's verdict
   assert.equal(health({ spreadmV: 20, verdict: 'bad' }).state, 'bad');
   assert.equal(health({ spreadmV: 20, verdict: 'watch' }).state, 'warn');
-  assert.equal(health({ spreadmV: 40, verdict: 'ok' }).state, 'warn');
+  assert.equal(health({ spreadmV: 40, verdict: 'ok' }).state, 'ok');
   assert.deepEqual(lowCells(flat.cells), [true, true, true, true, true], 'every cell under 2.5 V is marked');
   assert.deepEqual(lowCells([3700, 3560, 3712, 3705, 3709]), [false, true, false, false, false]);
   assert.deepEqual(lowCells([3912, 3915, 3909, 3911, 3914]), [false, false, false, false, false], 'balanced: none');
