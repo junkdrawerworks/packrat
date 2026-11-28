@@ -1,6 +1,7 @@
 // Packrat's own checks, run by test/e2e.mjs on a phone-sized page.
 const fakeNfc = () => { window.__nfc = { writes: [] }; window.NDEFReader = class { async write(m) { window.__nfc.writes.push(m.records[0].data); } async scan() {} }; };
 export async function appChecks({ page, ctx, base, assert }) {
+  await (await import('./kit-checks.mjs')).draftChecks({ browser: ctx.browser(), base, assert, path: '#01', open: ['#app >> text=Edit'], field: 'f-note' });
   assert.match(await page.locator('#app').innerText(), /connect first/i);
   await page.addInitScript(fakeNfc);
   await page.goto(base + '?demo');
