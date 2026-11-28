@@ -31,3 +31,26 @@ test("Cellmate's cell limits count as weak too; watch, a loan back and a deleted
   assert.deepEqual(look(reader({ packs, reads, loans }), nov), [{ text: 'Packs: 01 discharged; 03 too high', href: './' }]);
   assert.deepEqual(look(reader({}), nov), []);
 });
+
+test('Find anything: every pack by number, with who has it, found by label, model, note, number or who has it', async () => {
+  const { things } = await import('../js/attention.js');
+  const { found } = await import('../js/kit/find.js');
+  const all = things(reader(data));
+  assert.deepEqual(all.map(t => [t.name, t.where, t.href]), [['5.0 Ah #1', 'Pack 01', '#01'], ['5.0 Ah #2', 'Pack 02 · out with Neighbor', '#02'],
+    ['3.0 Ah', 'Pack 03', '#03'], ['2.0 Ah compact', 'Pack 04', '#04']]);
+  const hits = q => all.filter(t => found(q, ...t.texts)).map(t => t.href);
+  assert.deepEqual(hits('neighbor'), ['#02'], 'who has it now (pack 01 came back from the same neighbour)');
+  assert.deepEqual(hits('BL1850'), ['#01', '#02']);
+  assert.deepEqual(hits('pack 3'), ['#03']);
+  assert.deepEqual(hits('5.0 ah 2'), ['#02']);
+  assert.deepEqual(things(reader({ packs: [{ id: '07' }, { id: '08', retired: true }] })).map(t => t.name), ['Pack 07'], 'a deleted pack isn\'t one');
+});
+
+test('Check a tag: a pack sticker names the pack, and m/3 names pack 03 when there is no pack 3', async () => {
+  const { tags } = await import('../js/attention.js');
+  const t = tags(reader(data));
+  assert.deepEqual(t['03'], { name: '3.0 Ah', where: 'Pack 03' });
+  assert.deepEqual(t['3'], t['03']);
+  assert.equal(tags(reader({ packs: [{ id: '05', retired: true }] }))['05'], undefined, 'a deleted pack');
+  assert.deepEqual(tags(reader({})), {});
+});
