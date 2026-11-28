@@ -59,6 +59,41 @@ export function unpaired(packs, reads) {
   return Object.values(out).sort((a, b) => when(b) - when(a));
 }
 
+// ---- linking a pack to the battery inside it (its ROM id)
+const live = packs => packs.filter(p => !p.retired);
+const newestOf = reads => { const out = {}; for (const r of reads) if (r.rom && (!out[r.rom] || when(r) > when(out[r.rom]))) out[r.rom] = r; return out; };
+
+// What Link to Cellmate offers a pack, each battery by its newest reading: those no pack is linked to first, newest
+// first (unpaired's rule, so a deleted pack's battery is offered only from a reading taken after the delete), then
+// those on another pack (picking one moves it here), then this pack's own. A retired pack is never "another pack".
+// [{ rom, read, on: null (no pack) | 'here' | the other pack's id }]; [] when Cellmate has read nothing.
+export function linkChoices(packs, reads, packId) {
+  const all = live(packs), me = all.find(p => p.id === packId), latest = newestOf(reads), seen = new Set();
+  const free = unpaired(packs, reads).map(r => ({ rom: r.rom, read: r, on: null }));
+  const taken = all.filter(p => p.id !== packId && p.rom && latest[p.rom] && p.rom !== me?.rom)
+    .map(p => ({ rom: p.rom, read: latest[p.rom], on: p.id })).sort((a, b) => when(b.read) - when(a.read))
+    .filter(c => !seen.has(c.rom) && seen.add(c.rom));
+  return [...free, ...taken, ...(me?.rom ? [{ rom: me.rom, read: latest[me.rom] || null, on: 'here' }] : [])];
+}
+
+// What picking one does: the packs to save, [] when nothing changes. This pack gets the ROM (none: it's unlinked), and
+// any other pack that had it loses it. A model or capacity that came from a link (modelFrom / ahFrom 'link') follows
+// the battery: the new reading's, or none once unlinked; one typed in Edit stays.
+export function relinkPlan(packs, reads, packId, rom) {
+  const all = live(packs), me = all.find(p => p.id === packId);
+  if (!me) return [];
+  rom = rom || null;
+  const others = rom ? all.filter(p => p.id !== packId && p.rom === rom) : [];
+  if ((me.rom || null) === rom && !others.length) return [];
+  const follow = (p, r) => {
+    const { rom: _, ...d } = p;
+    if (d.modelFrom === 'link' || !d.model) { delete d.model; delete d.modelFrom; if (r?.model) Object.assign(d, { model: r.model, modelFrom: 'link' }); }
+    if (d.ahFrom === 'link' || !(d.ah > 0)) { delete d.ah; delete d.ahFrom; if (r?.capAh > 0) Object.assign(d, { ah: r.capAh, ahFrom: 'link' }); }
+    return d;
+  };
+  return [...others.map(p => follow(p, null)), { ...follow(me, rom ? newestOf(reads)[rom] : null), ...(rom ? { rom } : {}) }];
+}
+
 // The open loan for a pack, if it's out.
 export const openLoan = (pack, loans) => loans.filter(l => l.pack === pack.id && !l.back).sort((a, b) => String(b.out).localeCompare(String(a.out)))[0] || null;
 

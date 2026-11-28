@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince } from '../js/packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, cyclesPerMonth, idleSince } from '../js/packs.js';
 import { SAMPLE } from '../js/sample.js';
 const packs = SAMPLE['packrat.packs'], reads = SAMPLE['packrat.reads'], loans = SAMPLE['packrat.loans'];
 test('cell spread says how the pack is', () => {
@@ -79,4 +79,50 @@ test("a deleted pack's battery read again after the delete can be linked again",
   assert.deepEqual(unpaired([{ ...retired, goneAt: again.at }, ...packs.slice(1)], [...reads, again]).map(r => r.rom), ['2833D0110C000044'], 'a reading at the moment of the delete is the old one');
   assert.deepEqual(unpaired([{ id: '01', retired: true, gone: ['28F1A20C1A0000E3'] }, ...packs.slice(1)], [...reads, again]).map(r => r.rom), ['2833D0110C000044'],
     'a delete with no time keeps them all out, as before');
+});
+
+// Two batteries read before either pack was linked, and each pack linked to the other's reading (the newest is at the
+// top of the sheet, and it was the second pack's): each can be put right from its own page, with no delete.
+const E = '28EEEE0C1A0000E5', F = '28FFFF0C1B0000F6';
+const crossReads = [...reads, { id: 'r30', rom: E, model: 'BL1850B', cycles: 12, capAh: 5, at: Date.parse('2026-11-27T09:30:00Z') },
+  { id: 'r31', rom: F, model: 'BL1860B', cycles: 45, capAh: 6, at: Date.parse('2026-11-27T09:31:00Z') }];
+const apply = (ps, puts) => ps.map(p => puts.find(q => q.id === p.id) || p);
+test('two packs linked to each other\'s readings are put right in two relinks', () => {
+  let ps = [...packs, { id: '05', label: 'Pack five', rom: F, model: 'BL1860B', modelFrom: 'link', ah: 6, ahFrom: 'link' },
+    { id: '06', label: 'Pack six', rom: E, model: 'BL1850B', modelFrom: 'link', ah: 5, ahFrom: 'link' }];
+  // pack 05's choices: nothing it already has twice, the one no pack has first, its own battery on 06 offered to move
+  const c = linkChoices(ps, crossReads, '05');
+  assert.deepEqual(c.map(x => [x.rom, x.on]), [['2833D0110C000044', null], [E, '06'], ['2833C1990C0000F0', '03'], ['28F1A20C1B0000A1', '02'], ['28F1A20C1A0000E3', '01'], [F, 'here']]);
+  assert.equal(c.find(x => x.rom === E).read.id, 'r30', 'each battery by its newest reading');
+  const one = relinkPlan(ps, crossReads, '05', E);
+  assert.deepEqual(one.map(p => p.id), ['06', '05'], 'two puts: the other pack loses it, this one gets it');
+  assert.deepEqual(one[0], { id: '06', label: 'Pack six' }, 'pack 06 kept the battery, or the model and capacity that came with it');
+  assert.deepEqual(one[1], { id: '05', label: 'Pack five', rom: E, model: 'BL1850B', modelFrom: 'link', ah: 5, ahFrom: 'link' }, 'the model from the old link stayed');
+  ps = apply(ps, one);
+  assert.deepEqual(linkChoices(ps, crossReads, '06').map(x => [x.rom, x.on]).slice(0, 2), [[F, null], ['2833D0110C000044', null]], 'the battery left over is first for pack 06');
+  ps = apply(ps, relinkPlan(ps, crossReads, '06', F));
+  assert.deepEqual([ps.find(p => p.id === '05').rom, ps.find(p => p.id === '06').rom, ps.find(p => p.id === '06').model], [E, F, 'BL1860B']);
+  assert.deepEqual(relinkPlan(ps, crossReads, '06', F), [], 'the same battery again changes nothing');
+});
+test('None unlinks a pack, and a model typed in Edit stays through any link', () => {
+  const typed = { ...packs[3], rom: '2833D0110C000044' };   // pack 04, model BL1820B typed in Edit
+  const [off] = relinkPlan([...packs.slice(0, 3), typed], reads, '04', '');
+  assert.deepEqual(off, { id: '04', label: '2.0 Ah compact', model: 'BL1820B' }, 'unlinked');
+  assert.equal(relinkPlan(packs, reads, '04', '2833D0110C000044')[0].model, 'BL1820B', 'a typed model was replaced by the reading\'s');
+  assert.equal(relinkPlan(packs, reads, '04', '2833D0110C000044')[0].modelFrom, undefined);
+  const fromLink = { id: '07', rom: E, model: 'BL1850B', modelFrom: 'link' };
+  assert.deepEqual(relinkPlan([fromLink], crossReads, '07', ''), [{ id: '07' }], 'unlinked, the battery\'s model went with it');
+  assert.deepEqual(relinkPlan([{ id: '07' }], crossReads, '07', F), [{ id: '07', rom: F, model: 'BL1860B', modelFrom: 'link', ah: 6, ahFrom: 'link' }]);
+  assert.deepEqual(relinkPlan([{ id: '07' }], crossReads, '07', ''), [], 'nothing to unlink');
+});
+test('what Link offers: nothing when Cellmate has read nothing; deleted packs out, and their batteries only once read again', () => {
+  assert.deepEqual(linkChoices([{ id: '01' }], [], '01'), [], 'the toast is for this alone');
+  assert.deepEqual(linkChoices([{ id: '01', rom: E }], [], '01').map(x => [x.rom, x.on]), [[E, 'here']], 'a linked pack can still be unlinked');
+  const goneAt = Date.parse('2026-11-25T12:00:00Z');
+  const ps = [{ id: '01', retired: true, rom: '28F1A20C1A0000E3', gone: ['28F1A20C1A0000E3'], goneAt }, ...packs.slice(1)];
+  assert.deepEqual(linkChoices(ps, reads, '04').map(x => x.on), [null, '03', '02'], 'a retired pack offered as another pack');
+  assert.equal(linkChoices(ps, reads, '04').some(x => x.rom === '28F1A20C1A0000E3'), false, 'a deleted pack\'s battery offered from a reading before the delete');
+  const again = { id: 'r20', rom: '28F1A20C1A0000E3', model: 'BL1850B', cycles: 213, at: Date.parse('2026-11-26T09:00:00Z') };
+  assert.deepEqual(linkChoices(ps, [...reads, again], '04').slice(0, 2).map(x => x.read.id), ['r20', 'r5'], 'read again after the delete: offered, by that reading');
+  assert.deepEqual(relinkPlan(ps, [...reads, again], '01', 'x'), [], 'a retired pack is never relinked');
 });

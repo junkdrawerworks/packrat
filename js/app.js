@@ -4,7 +4,7 @@ import { $, h, mount, toast, sheet, confirmSheet, route, go, dayText, ageText, d
 import { Ledger, watchConnectLinks, refusedLine, STILL_LOADING } from './kit/ledger.js';
 import { tagUrl, newId } from './kit/tags.js';
 import { nfcPanel } from './kit/panel.js';
-import { health, lowCells, lowest, readsFor, lastCells, unpaired, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
+import { health, lowCells, lowest, readsFor, lastCells, unpaired, linkChoices, relinkPlan, openLoan, cyclesPerMonth, idleSince, when } from './packs.js';
 import { SAMPLE } from './sample.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
@@ -55,7 +55,7 @@ function renderHome() {
     !packs().length || wait ? h('p', { class: 'empty' }, wait || 'No packs yet. Number each pack with a marker, then add it here.') : null,
     unlinked.length ? h('section', { class: 'card' }, h('h2', {}, 'Read by Cellmate, not linked'),
       h('p', { class: 'muted' }, 'Open a pack and press Link to attach its readings.'),
-      h('ul', { class: 'plain' }, unlinked.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles`)))) : null,
+      h('ul', { class: 'plain' }, unlinked.map(r => h('li', {}, h('code', {}, r.rom), ` ${r.model || ''} ${r.label ? '"' + r.label + '"' : ''} · ${r.cycles} cycles · read ${stampText(when(r))}`)))) : null,
     h('div', { class: 'btns' }, h('button', { type: 'button', class: 'btn', disabled: !!wait, onclick: fresh(() => editPack(null)) }, 'Add a pack')),
   ];
 }
@@ -141,16 +141,35 @@ async function editLoan(l) {
   toast('Saved.'); render();
 }
 
+// Link to Cellmate: which battery is inside this pack, from every one Cellmate has read. Those no pack has come first;
+// one on another pack can be moved here (two packs read before linking can each take the other's reading), and a
+// linked pack can be unlinked. The line under the choice says what picking it does.
 async function link(p) {
-  const unlinked = loose();
-  if (!unlinked.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
-  const v = await sheet({ title: 'Which reading is this pack?', ok: 'Link', fields: [
-    { name: 'rom', label: 'Read by Cellmate', type: 'select', options: unlinked.map(r => [r.rom, `${stampText(when(r))} · ${r.model || '?'} · ${r.cycles} cycles${r.label ? ' · ' + r.label : ''}`]) } ],
+  const choices = linkChoices(ledger.docs('packs'), reads(), p.id);
+  if (!choices.length) { toast('Read the pack on Cellmate first (on your Wi-Fi), then try again.', 'bad'); return; }
+  const said = c => [c.read ? stampText(when(c.read)) : null, c.read ? `${c.read.cycles} cycles` : null, '…' + c.rom.slice(-4), c.read?.model, c.read?.label,
+    c.on === 'here' ? 'linked now' : c.on ? `now on pack ${c.on}: moves here` : null].filter(Boolean).join(' · ');
+  const options = choices.map(c => [c.rom, said(c)]);
+  if (p.rom) options.push(['', 'None: unlink this pack']);
+  const asked = sheet({ title: p.rom ? 'Which battery is in this pack?' : 'Which reading is this pack?', ok: 'Link', fields: [
+    { name: 'rom', label: 'Read by Cellmate', type: 'select', value: p.rom || choices[0].rom, options } ],
     body: h('p', { class: 'muted' }, 'The newest is at the top. Read just this pack on Cellmate if you\'re not sure.') });
-  if (!v || v.__danger || !v.rom) return;
-  const r = unlinked.find(x => x.rom === v.rom);
-  ledger.put('packs', { ...p, rom: v.rom, model: p.model || r.model, ah: p.ah || r.capAh });
-  toast('Linked.'); render();
+  const sel = $('dialog[open] #f-rom'), hint = h('small', { class: 'link-hint', 'aria-live': 'polite' });
+  const tell = () => {
+    const c = choices.find(x => x.rom === sel.value);
+    hint.textContent = !c ? 'This pack is left unlinked, and its readings show on the home page as not linked.'
+      : c.on === 'here' ? 'Linked to this pack now.' : !c.on ? 'Not linked to any pack yet.'
+      : `On pack ${c.on}${pack(c.on)?.label ? ` (${pack(c.on).label})` : ''} now. Linking moves it here, and pack ${c.on} is left unlinked.`;
+  };
+  sel?.after(hint); sel?.addEventListener('change', tell); if (sel) tell();
+  const v = await asked;
+  if (!v || v.__danger) return;
+  const puts = relinkPlan(ledger.docs('packs'), reads(), p.id, v.rom);
+  if (!puts.length) { toast('No change.'); return; }
+  for (const d of puts) ledger.put('packs', d);   // the other pack first: it loses the battery, then this one gets it
+  const moved = puts.filter(d => d.id !== p.id).map(d => d.id);
+  toast(!v.rom ? 'Unlinked.' : moved.length ? `Linked. Pack ${moved.join(' and ')} ${moved.length > 1 ? 'are' : 'is'} unlinked now: open it and link its own reading.` : 'Linked.');
+  render();
 }
 
 async function editPack(p) {
@@ -190,6 +209,7 @@ async function editPack(p) {
   // a new number needs a new sticker (the old one still holds the old number): the panel starts as not written
   const { retired, tagged, ...doc } = { ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note };
   if (tagged && exists && p.id === id) doc.tagged = tagged;
+  if (v.model !== (p?.model || '')) delete doc.modelFrom;          // typed in Edit: it stays through a relink
   ledger.put('packs', gone.length ? { ...doc, gone, goneAt } : doc);
   go('#' + id); render();
 }
