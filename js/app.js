@@ -190,7 +190,7 @@ async function editPack(p) {
     if ((!exists || p.id !== id) && pack(id)) return { field: 'id', line: `There's already a pack ${id}.` };
     return refusedLine({ ...(p || {}), id, label: v.label, model: v.model, bought: v.bought, note: v.note });
   };
-  const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, check, fields: [
+  const v = await sheet({ title: exists ? 'Pack ' + p.id : 'New pack', danger: exists ? 'Delete' : null, check, draft: 'pack:' + (exists ? p.id : 'new:' + (p?.id || '')), fields: [
     { name: 'id', label: 'Number', value: p?.id || nextNumber(), inputmode: 'numeric', hint: exists ? 'The number on its sticker. Changing it needs a new sticker.' : 'Write it on the pack with a paint pen too.' },
     { name: 'label', label: 'Name', value: p?.label, placeholder: '5.0 Ah #1' },
     { name: 'model', label: 'Model', value: p?.model, placeholder: 'BL1850B' },

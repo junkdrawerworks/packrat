@@ -3,7 +3,9 @@ import { daysSince, ageText, dayText, parseDay } from './kit/ui.js';
 // A pack's five cells should sit within a few hundredths of a volt of each other. Cellmate (lxt_decode.h) calls a pack
 // bad, and won't clear its lock, when a cell is under 2.5 V (deeply discharged: the cells' rated end voltage) or over
 // 4.25 V, or the spread is over 100 mV; Packrat says "weak" for the same, so it never reads better than Cellmate does.
-export const SPREAD = { watch: 30, weak: 100 };   // mV
+// Balanced up to 50 mV and "watch it" from there to 100, as Cellmate's own page says (DIFF_WATCH_MV: "drifting apart,
+// 50-100 mV"), so a pack reads the same on both.
+export const SPREAD = { watch: 50, weak: 100 };   // mV
 export const CELL = { low: 2500, high: 4250 };    // mV: Cellmate's CELL_LOW_MV and CELL_HIGH_MV
 const volts = mv => (mv / 1000).toFixed(2);
 
