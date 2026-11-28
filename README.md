@@ -33,6 +33,7 @@ GitHub Pages serves it from `main`, `/ (root)`, at its own address (`CNAME`).
 - `js/app.js`: the app.
 - `js/packs.js`: readings, health and loans, unit-tested.
 - `js/sample.js`: the made-up packs, Cellmate readings and loans for the sample (`?demo`).
+- `js/attention.js`: what Switchboard's front page says about Packrat (Needs a look, Find anything, Check a tag's names), from packs.js's own rules. Switchboard imports it from this address, so keep its exports (COLLS, look, things, tags) and `test/attention.test.mjs` passing; it stays out of `sw.js` on purpose.
 - `js/kit/`, `css/kit.css`: the tag apps' shared kit (ledger client, Web NFC, small UI helpers).
 - `fonts/`: Barlow, Barlow Condensed and JetBrains Mono (SIL Open Font License), served from here so nothing loads from elsewhere.
 - `test/e2e.mjs`, `test/app-checks.mjs`: the page in Chromium, offline included.
