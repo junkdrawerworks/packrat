@@ -222,7 +222,10 @@ async function editPack(p) {
 }
 
 function render() {
-  const r = route();
+  let r = route();
+  // A one-digit number with no pack of its own opens its 0n pack (m/3 is pack 03): a pack typed as 3 on a sheet the
+  // 1.0 ledger script wrote is listed as 03 once 1.1 is pasted, and its sticker still holds m/3.
+  if (r.view === 'item' && /^[0-9]$/.test(r.id) && !pack(r.id) && pack('0' + r.id)) { history.replaceState(history.state, '', '#0' + r.id); r = route(); }
   if (!ledger.connected) {
     mount(app, h('div', { class: 'card' }, h('h2', {}, 'Connect first'),
       h('p', {}, 'Packrat keeps its packs in your Switchboard ledger. Open Switchboard and press Connect beside Packrat.'),

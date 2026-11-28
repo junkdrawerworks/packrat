@@ -131,6 +131,7 @@ export async function appChecks({ page, ctx, base, assert }) {
   await loanChecks({ page, base, assert });
   await relinkChecks({ page, base, assert });
   await longLoanChecks({ ctx, base, assert });
+  await oneDigitChecks({ page, base, assert });
   // Back from a pack 40 rows down lands where the list was
   const { backKeepsPlace } = await import('./kit-checks.mjs');
   // every link, button and card header on the sample's screens is a 44 px target
@@ -249,6 +250,23 @@ async function longLoanChecks({ ctx, base, assert }) {
     assert.deepEqual([await page.locator('a.row[href="#01"] .s').textContent(), await page.locator('a.row[href="#01"] .chip').allTextContents()], ['Out with Cousin · today', ['out']],
       'a balanced pack lent out shows only "out"');
   } finally { await phone.close(); }
+}
+
+// A pack typed as 3 on a sheet the 1.0 ledger script wrote is listed as 03 once 1.1 is pasted (with a deleted "3"),
+// and its sticker still holds m/3: that opens pack 03, not "Add pack 3". A one-digit number with no 0n pack, or one
+// that has a pack of its own, opens as before.
+async function oneDigitChecks({ page, base, assert }) {
+  await page.goto('about:blank');
+  await page.goto(base + '?demo#3');
+  await page.waitForSelector('.tape >> text=3.0 Ah', { timeout: 3000 });
+  assert.equal(await page.evaluate(() => location.hash), '#03');
+  assert.equal(await page.locator('text=Add pack 3').count(), 0);
+  await page.evaluate(() => { location.hash = '#5'; });
+  await page.waitForSelector('text=No pack 5 yet.');
+  assert.equal(await page.evaluate(() => location.hash), '#5');
+  await page.evaluate(() => { const { ledger } = window.__packrat; ledger.put('packs', { id: '4', label: 'Typed as 4' }); location.hash = '#4'; });
+  await page.waitForSelector('.tape >> text=Typed as 4');
+  assert.equal(await page.evaluate(() => location.hash), '#4');
 }
 
 // A loan marked back by mistake: clearing Came back in its sheet puts the pack out again, unless it's out on another
